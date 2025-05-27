@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分组管理 - XTools</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.css" rel="stylesheet">
+    <style>
+        .sortable-ghost {
+            background-color: #f8f9fa;
+            opacity: 0.5;
+        }
+        .sortable-drag {
+            background-color: #fff;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .sort-handle {
+            cursor: move;
+            color: #6c757d;
+            padding: 0 8px;
+        }
+        .sort-handle:hover {
+            color: #495057;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/admin/dashboard">XTools 管理后台</a>
+            <div class="d-flex">
+                <a href="/admin/dashboard" class="btn btn-outline-light me-2">工具管理</a>
+                <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addGroupModal">
+                    新增分组
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container my-4">
+        <h2>分组管理</h2>
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">排序</th>
+                        <th>ID</th>
+                        <th>名称</th>
+                        <th>描述</th>
+                        <th>创建时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% groups.forEach(function(group) { %>
+                        <tr data-id="<%= group.id %>" data-order="<%= group.sort_order %>">
+                            <td class="sort-handle"><i class="bi bi-grip-vertical"></i></td>
+                            <td><%= group.id %></td>
+                            <td><%= group.name %></td>
+                            <td><%= group.description %></td>
+                            <td><%= group.created_at %></td>
+                            <td>
+                                <button class="btn btn-sm btn-primary edit-group-btn"
+                                        data-group-id="<%= group.id %>"
+                                        data-group-name="<%= group.name %>"
+                                        data-group-description="<%= group.description %>">
+                                    编辑
+                                </button>
+                                <form action="/admin/group/<%= group.id %>/delete" method="POST" class="d-inline">
+                                    <button type="submit" class="btn btn-sm btn-danger" 
+                                            onclick="return confirm('确定要删除此分组吗？该分组下的工具将变为未分组状态。')">
+                                        删除
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    <% }); %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 新增分组模态框 -->
+    <div class="modal fade" id="addGroupModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form action="/admin/group" method="POST">
+                    <div class="modal-header">
+                        <h5 class="modal-title">新增分组</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="name" class="form-label">分组名称</label>
+                            <input type="text" class="form-control" id="name" name="name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="description" class="form-label">分组描述</label>
+                            <textarea class="form-control" id="description" name="description" rows="3"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                        <button type="submit" class="btn btn-primary">保存</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 编辑分组模态框 -->
+    <div class="modal fade" id="editGroupModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <form id="editGroupForm" method="POST">
+                    <div class="modal-header">
+                        <h5 class="modal-title">编辑分组</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="edit-name" class="form-label">分组名称</label>
+                            <input type="text" class="form-control" id="edit-name" name="name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit-description" class="form-label">分组描述</label>
+                            <textarea class="form-control" id="edit-description" name="description" rows="3"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                        <button type="submit" class="btn btn-primary">保存</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css"></script>
+    <script>
+        // Initialize drag-and-drop sorting
+        document.addEventListener('DOMContentLoaded', function() {
+            const tbody = document.querySelector('tbody');
+            new Sortable(tbody, {
+                handle: '.sort-handle',
+                animation: 150,
+                onEnd: function(evt) {
+                    const rows = Array.from(tbody.querySelectorAll('tr'));
+                    rows.forEach((row, index) => {
+                        const groupId = row.dataset.id;
+                        fetch('/admin/group/reorder', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                groupId: groupId,
+                                newOrder: index
+                            })
+                        }).catch(error => {
+                            console.error('Error updating group order:', error);
+                            alert('更新排序失败');
+                        });
+                    });
+                }
+            });
+        });
+
+        // Handle edit group button clicks
+        document.querySelectorAll('.edit-group-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                const groupId = this.dataset.groupId;
+                const groupName = this.dataset.groupName;
+                const groupDescription = this.dataset.groupDescription;
+
+                const modal = new bootstrap.Modal(document.getElementById('editGroupModal'));
+                document.getElementById('edit-name').value = groupName;
+                document.getElementById('edit-description').value = groupDescription;
+                document.getElementById('editGroupForm').action = `/admin/group/${groupId}/edit`;
+                modal.show();
+            });
+        });
+    </script>
+</body>
+</html>
