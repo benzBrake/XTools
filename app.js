@@ -212,7 +212,7 @@ app.get('/', (req, res) => {
 });
 
 app.get('/tool/:uuid', (req, res) => {
-    db.get('SELECT * FROM tools WHERE uuid = ?', [req.params.uuid], (err, tool) => {
+    db.get('SELECT t.*, g.name as group_name FROM tools t LEFT JOIN groups g ON t.group_id = g.id WHERE t.uuid = ?', [req.params.uuid], (err, tool) => {
         if (err) {
             return res.status(500).send('Database error');
         }
@@ -220,16 +220,32 @@ app.get('/tool/:uuid', (req, res) => {
             return res.status(404).send('Tool not found');
         }
 
-        // 获取 CDN 设置
-        db.get('SELECT value FROM settings WHERE key = ?', ['cdn_url'], (err, row) => {
+        // 获取同分类的相似工具（不包括当前工具）
+        const similarToolsQuery = `
+            SELECT t.*, g.name as group_name 
+            FROM tools t 
+            LEFT JOIN groups g ON t.group_id = g.id 
+            WHERE t.group_id = ? AND t.uuid != ? 
+            ORDER BY t.sort_order ASC, t.id ASC 
+            LIMIT 4`;
+
+        db.all(similarToolsQuery, [tool.group_id, tool.uuid], (err, similarTools) => {
             if (err) {
                 return res.status(500).send('Database error');
             }
-            res.render('tool', { 
-                tool,
-                settings: {
-                    cdn_url: row ? row.value : ''
+
+            // 获取 CDN 设置
+            db.get('SELECT value FROM settings WHERE key = ?', ['cdn_url'], (err, row) => {
+                if (err) {
+                    return res.status(500).send('Database error');
                 }
+                res.render('tool', { 
+                    tool,
+                    similarTools,
+                    settings: {
+                        cdn_url: row ? row.value : ''
+                    }
+                });
             });
         });
     });
