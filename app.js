@@ -171,6 +171,69 @@ app.get('/admin', (req, res) => {
 });
 
 // Routes
+// 搜索工具路由
+app.get('/search', (req, res) => {
+    const query = req.query.q || '';
+    if (!query.trim()) {
+        return res.redirect('/');
+    }
+
+    // 构建搜索条件
+    const searchQuery = `
+        SELECT t.*, g.name as group_name 
+        FROM tools t 
+        LEFT JOIN groups g ON t.group_id = g.id 
+        WHERE t.name LIKE ? OR t.description LIKE ? 
+        ORDER BY 
+            CASE 
+                WHEN t.name LIKE ? THEN 1
+                WHEN t.description LIKE ? THEN 2
+                ELSE 3
+            END,
+            g.sort_order ASC, 
+            t.sort_order ASC, 
+            t.id ASC`;
+
+    const searchTerm = `%${query}%`;
+    const exactSearchTerm = `%${query}`;
+
+    db.all(searchQuery, [searchTerm, searchTerm, exactSearchTerm, exactSearchTerm], (err, tools) => {
+        if (err) {
+            return res.status(500).send('Database error');
+        }
+
+        // 获取站点设置
+        db.all('SELECT key, value FROM settings WHERE key LIKE \'site_%\'', [], (err, settingsRows) => {
+            if (err) {
+                return res.status(500).send('Database error');
+            }
+
+            const settings = {};
+            settingsRows.forEach(row => {
+                settings[row.key] = row.value;
+            });
+
+            // 高亮搜索关键词
+            tools.forEach(tool => {
+                const regex = new RegExp(query, 'gi');
+                tool.highlightedName = tool.name.replace(regex, match => `<span class="highlight">${match}</span>`);
+                tool.highlightedDescription = tool.description.replace(regex, match => `<span class="highlight">${match}</span>`);
+            });
+
+            res.render('search', { 
+                tools, 
+                query,
+                settings: {
+                    site_name: settings.site_name || 'XTools - 在线工具箱',
+                    site_keywords: settings.site_keywords || '',
+                    site_description: settings.site_description || '',
+                    cdn_url: settings.cdn_url || ''
+                }
+            });
+        });
+    });
+});
+
 app.get('/', (req, res) => {
     const toolsQuery = 'SELECT t.*, g.name as group_name FROM tools t LEFT JOIN groups g ON t.group_id = g.id ORDER BY g.sort_order ASC, t.sort_order ASC, t.id ASC';
 
