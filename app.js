@@ -6,6 +6,7 @@ const bcrypt = require('bcryptjs');
 const path = require('path');
 const multer = require('multer');
 const fs = require('fs');
+const { v4: uuidv4 } = require('uuid');
 
 // Configure multer for handling file uploads
 const upload = multer({ 
@@ -59,6 +60,7 @@ db.serialize(() => {
 
     db.run(`CREATE TABLE IF NOT EXISTS tools (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT UNIQUE,
         name TEXT,
         description TEXT,
         html_content TEXT,
@@ -209,8 +211,8 @@ app.get('/', (req, res) => {
     });
 });
 
-app.get('/tool/:id', (req, res) => {
-    db.get('SELECT * FROM tools WHERE id = ?', [req.params.id], (err, tool) => {
+app.get('/tool/:uuid', (req, res) => {
+    db.get('SELECT * FROM tools WHERE uuid = ?', [req.params.uuid], (err, tool) => {
         if (err) {
             return res.status(500).send('Database error');
         }
@@ -387,9 +389,9 @@ app.post('/admin/settings/import', requireAuth, upload.single('importFile'), (re
                 insertGroup.finalize();
 
                 // Import tools
-                const insertTool = db.prepare('INSERT INTO tools (id, name, description, html_content, api_endpoint, group_id, type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+                const insertTool = db.prepare('INSERT INTO tools (id, uuid, name, description, html_content, api_endpoint, group_id, type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
                 importData.tools.forEach(tool => {
-                    insertTool.run([tool.id, tool.name, tool.description, tool.html_content, tool.api_endpoint, tool.group_id, tool.type, tool.created_at]);
+                    insertTool.run([tool.id, tool.uuid, tool.name, tool.description, tool.html_content, tool.api_endpoint, tool.group_id, tool.type, tool.created_at]);
                 });
                 insertTool.finalize();
 
@@ -512,9 +514,10 @@ app.get('/admin/tool/new', requireAuth, (req, res) => {
 
 app.post('/admin/tool', requireAuth, (req, res) => {
     const { name, description, html_content, api_endpoint, group_id, type } = req.body;
-    db.run(`INSERT INTO tools (name, description, html_content, api_endpoint, group_id, type) 
-            VALUES (?, ?, ?, ?, ?, ?)`,
-        [name, description, html_content, api_endpoint, group_id || null, type || 'html'],
+    const uuid = uuidv4();
+    db.run(`INSERT INTO tools (uuid, name, description, html_content, api_endpoint, group_id, type) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [uuid, name, description, html_content, api_endpoint, group_id || null, type || 'html'],
         (err) => {
             if (err) {
                 return res.status(500).send('Database error');

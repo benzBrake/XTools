@@ -4,6 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>
         <%= tool.id ? '编辑工具' : '新增工具' %> - XTools
     </title>
@@ -31,10 +34,17 @@
         </h2>
         <form action="<%= tool.id ? `/admin/tool/${tool.id}` : '/admin/tool' %>" method="POST"
             enctype="application/x-www-form-urlencoded">
+            <input type="hidden" name="_version" value="<%= Date.now() %>">
             <div class="mb-3">
                 <label for="name" class="form-label">工具名称</label>
                 <input type="text" class="form-control" id="name" name="name" value="<%= tool.name || '' %>" required>
             </div>
+            <% if (tool.uuid) { %>
+            <div class="mb-3">
+                <label class="form-label">UUID</label>
+                <input type="text" class="form-control" value="<%= tool.uuid %>" readonly>
+            </div>
+            <% } %>
             <div class="mb-3">
                 <label for="description" class="form-label">工具描述</label>
                 <textarea class="form-control" id="description" name="description" rows="3"
