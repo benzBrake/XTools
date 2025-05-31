@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const bodyParser = require('body-parser');
@@ -19,99 +20,57 @@ const upload = multer({
         }
     }
 });
-require('dotenv').config();
+
 const { getSecretKey } = require('./utils/config');
 const { replaceCdnUrl } = require('./utils/cdn');
 
 const app = express();
 const port = 3000;
 
+// 导入数据库配置
+const db = require('./config/database');
+
 // Database setup
-const db = new sqlite3.Database('tools.db', (err) => {
-    if (err) {
-        console.error(err.message);
-    }
-    console.log('Connected to the tools database.');
+db.connect().then(() => {
+    console.log('Database connection initialized.');
+}).catch(err => {
+    console.error('Error connecting to the database:', err);
+    process.exit(1);
 });
 
-// Create tables
-db.serialize(() => {
-    db.run(`CREATE TABLE IF NOT EXISTS admin (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE,
-        password TEXT
-    )`);
+// Database initialization is now handled by migrations
 
-    db.run(`CREATE TABLE IF NOT EXISTS settings (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        key TEXT UNIQUE,
-        value TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
+// Insert default settings
+const defaultSettings = [
+    { key_name: 'admin_username', value: 'admin' },
+    { key_name: 'admin_password', value: bcrypt.hashSync('admin123', 10) },
+    { key_name: 'site_name', value: 'XTools - 在线工具箱' },
+    { key_name: 'site_keywords', value: '在线工具,工具箱,开发者工具' },
+    { key_name: 'site_description', value: 'XTools 是一个开发者在线工具箱，提供了多种实用的开发工具。' }
+];
 
-    db.run(`CREATE TABLE IF NOT EXISTS groups (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        description TEXT,
-        display_style TEXT DEFAULT 'card',
-        sort_order INTEGER DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
-
-    db.run(`CREATE TABLE IF NOT EXISTS groups (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE,
-        description TEXT,
-        sort_order INTEGER DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )`);
-
-    db.run(`CREATE TABLE IF NOT EXISTS tools (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        uuid TEXT UNIQUE,
-        name TEXT,
-        description TEXT,
-        html_content TEXT,
-        api_endpoint TEXT,
-        group_id INTEGER,
-        type TEXT DEFAULT 'html',
-        sort_order INTEGER DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(group_id) REFERENCES groups(id)
-    )`);
-
-    // Insert default admin if not exists
-    const defaultAdmin = {
-        username: 'admin',
-        password: bcrypt.hashSync('admin123', 10)
-    };
-
-    db.get('SELECT * FROM admin WHERE username = ?', [defaultAdmin.username], (err, row) => {
-        if (!row) {
-            db.run('INSERT INTO admin (username, password) VALUES (?, ?)', 
-                [defaultAdmin.username, defaultAdmin.password]);
+// Initialize settings
+db.connect().then(async () => {
+    try {
+        // 重建 settings 表
+        await db.query('DROP TABLE IF EXISTS settings');
+        await db.query(`CREATE TABLE settings (
+            id INTEGER PRIMARY KEY,
+            key_name VARCHAR(255) UNIQUE,
+            value TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
+        
+        // 插入默认设置
+        for (const setting of defaultSettings) {
+            await db.query('INSERT INTO settings (key_name, value) VALUES (?, ?)', 
+                [setting.key_name, setting.value]);
+            console.log(`Default setting created: ${setting.key_name}`);
         }
-    });
-
-    // Insert or update default settings if not exists
-    const defaultSettings = [
-        { key: 'admin_username', value: 'admin' },
-        { key: 'admin_password', value: bcrypt.hashSync('admin123', 10) },
-        { key: 'site_name', value: 'XTools - 在线工具箱' },
-        { key: 'site_keywords', value: '在线工具,工具箱,开发者工具' },
-        { key: 'site_description', value: 'XTools 是一个开发者在线工具箱，提供了多种实用的开发工具。' }
-    ];
-
-    defaultSettings.forEach(setting => {
-        db.get('SELECT * FROM settings WHERE key = ?', [setting.key], (err, row) => {
-            if (!row) {
-                db.run('INSERT INTO settings (key, value) VALUES (?, ?)', [setting.key, setting.value]);
-                console.log(`Default setting created: ${setting.key}`);
-            }
-        });
-    });
+    } catch (err) {
+        console.error('Error initializing settings:', err);
+    }
 });
 
 // Middleware
@@ -149,16 +108,13 @@ app.get('/admin/login', (req, res) => {
     res.render('admin/login', { error: req.query.error });
 });
 
-app.post('/admin/login', (req, res) => {
+app.post('/admin/login', async (req, res) => {
     const { username, password } = req.body;
 
     // Get admin password from settings
-    db.get('SELECT value FROM settings WHERE key = ?', ['admin_password'], (err, row) => {
-        if (err) {
-            return res.redirect('/admin/login?error=' + encodeURIComponent('登录失败'));
-        }
-
-        if (!row || !bcrypt.compareSync(password, row.value) || username !== 'admin') {
+    try {
+        const row = await db.query('SELECT value FROM settings WHERE key_name = ?', ['admin_password']);
+        if (!row || (Array.isArray(row) && row.length === 0) || !bcrypt.compareSync(password, row[0].value) || username !== 'admin') {
             return res.redirect('/admin/login?error=' + encodeURIComponent('用户名或密码错误'));
         }
 
@@ -166,7 +122,10 @@ app.post('/admin/login', (req, res) => {
         const returnTo = req.session.returnTo || '/admin/dashboard';
         delete req.session.returnTo;
         res.redirect(returnTo);
-    });
+    } catch (err) {
+        console.error('Login error:', err);
+        return res.redirect('/admin/login?error=' + encodeURIComponent('登录失败'));
+    }
 });
 
 app.get('/admin/logout', (req, res) => {
@@ -182,7 +141,7 @@ app.get('/admin', (req, res) => {
 
 // Routes
 // 搜索工具路由
-app.get('/search', (req, res) => {
+app.get('/search', async (req, res) => {
     const query = req.query.q || '';
     if (!query.trim()) {
         return res.redirect('/');
@@ -207,88 +166,87 @@ app.get('/search', (req, res) => {
     const searchTerm = `%${query}%`;
     const exactSearchTerm = `%${query}`;
 
-    db.all(searchQuery, [searchTerm, searchTerm, exactSearchTerm, exactSearchTerm], (err, tools) => {
-        if (err) {
-            return res.status(500).send('Database error');
-        }
+    try {
+        // 获取工具列表
+        const tools = await db.query(searchQuery, [searchTerm, searchTerm, exactSearchTerm, exactSearchTerm]);
 
         // 获取站点设置
-        db.all('SELECT key, value FROM settings WHERE key LIKE \'site_%\'', [], (err, settingsRows) => {
-            if (err) {
-                return res.status(500).send('Database error');
-            }
-
-            const settings = {};
-            settingsRows.forEach(row => {
-                settings[row.key] = row.value;
-            });
-
-            // 高亮搜索关键词
-            tools.forEach(tool => {
-                const regex = new RegExp(query, 'gi');
-                tool.highlightedName = tool.name.replace(regex, match => `<span class="highlight">${match}</span>`);
-                tool.highlightedDescription = tool.description.replace(regex, match => `<span class="highlight">${match}</span>`);
-            });
-
-            res.render('search', { 
-                tools, 
-                query,
-                settings: {
-                    site_name: settings.site_name || 'XTools - 在线工具箱',
-                    site_keywords: settings.site_keywords || '',
-                    site_description: settings.site_description || '',
-                    cdn_url: settings.cdn_url || ''
-                }
-            });
-        });
-    });
-});
-
-app.get('/', (req, res) => {
-    const toolsQuery = 'SELECT t.*, g.name as group_name FROM tools t LEFT JOIN groups g ON t.group_id = g.id ORDER BY g.sort_order ASC, t.sort_order ASC, t.id ASC';
-
-    // 获取站点设置
-    db.all('SELECT key, value FROM settings WHERE key LIKE \'site_%\'', [], (err, settingsRows) => {
-        if (err) {
-            return res.status(500).send('Database error');
-        }
+        const settingsRows = await db.query('SELECT key_name, value FROM settings WHERE key_name LIKE \'site_%\'');
 
         const settings = {};
         settingsRows.forEach(row => {
-            settings[row.key] = row.value;
+            settings[row.key_name] = row.value;
         });
 
-        // 获取分组列表
-        db.all('SELECT * FROM groups ORDER BY sort_order ASC, id ASC', [], (err, groups) => {
-            if (err) {
-                return res.status(500).send('Database error');
+        // 高亮搜索关键词
+        tools.forEach(tool => {
+            const regex = new RegExp(query, 'gi');
+            tool.highlightedName = tool.name.replace(regex, match => `<span class="highlight">${match}</span>`);
+            tool.highlightedDescription = tool.description.replace(regex, match => `<span class="highlight">${match}</span>`);
+        });
+
+        res.render('search', { 
+            tools, 
+            query,
+            settings: {
+                site_name: settings.site_name || 'XTools - 在线工具箱',
+                site_keywords: settings.site_keywords || '',
+                site_description: settings.site_description || '',
+                cdn_url: settings.cdn_url || ''
             }
-
-            // 获取工具列表
-            db.all(toolsQuery, [], (err, tools) => {
-                if (err) {
-                    return res.status(500).send('Database error');
-                }
-                res.render('index', { 
-                    tools, 
-                    groups, 
-                    settings: {
-                        site_name: settings.site_name || 'XTools - 在线工具箱',
-                        site_keywords: settings.site_keywords || '',
-                        site_description: settings.site_description || '',
-                        cdn_url: settings.cdn_url || ''
-                    }
-                });
-            });
         });
-    });
+    } catch (err) {
+        console.error('Search error:', err);
+        return res.status(500).send('Database error');
+    }
 });
 
-app.get('/tool/:uuid', (req, res) => {
-    db.get('SELECT t.*, g.name as group_name FROM tools t LEFT JOIN groups g ON t.group_id = g.id WHERE t.uuid = ?', [req.params.uuid], (err, tool) => {
-        if (err) {
-            return res.status(500).send('Database error');
-        }
+app.get('/', async (req, res) => {
+    const toolsQuery = 'SELECT t.*, g.name as group_name FROM tools t LEFT JOIN groups g ON t.group_id = g.id ORDER BY g.sort_order ASC, t.sort_order ASC, t.id ASC';
+
+    try {
+        // 获取站点设置和分组
+        const settingsRows = await db.query('SELECT key_name, value FROM settings WHERE key_name LIKE \'site_%\'');
+        const tools = await db.query(toolsQuery);
+        const groups = await db.query('SELECT * FROM groups ORDER BY sort_order ASC, id ASC');
+
+        const settings = {};
+        settingsRows.forEach(row => {
+            settings[row.key_name] = row.value;
+        });
+
+        // 按组分类工具
+        const groupedTools = {};
+        tools.forEach(tool => {
+            const groupName = tool.group_name || '未分类';
+            if (!groupedTools[groupName]) {
+                groupedTools[groupName] = [];
+            }
+            groupedTools[groupName].push(tool);
+        });
+
+        res.render('index', { 
+            groups,
+            groupedTools, 
+            settings: {
+                site_name: settings.site_name || 'XTools - 在线工具箱',
+                site_keywords: settings.site_keywords || '',
+                site_description: settings.site_description || '',
+                cdn_url: settings.cdn_url || ''
+            }
+        });
+    } catch (err) {
+        console.error('Homepage error:', err);
+        return res.status(500).send('Database error');
+    }
+});
+
+app.get('/tool/:uuid', async (req, res) => {
+    try {
+        // 获取工具详情
+        const tools = await db.query('SELECT t.*, g.name as group_name FROM tools t LEFT JOIN groups g ON t.group_id = g.id WHERE t.uuid = ?', [req.params.uuid]);
+        const tool = tools[0];
+
         if (!tool) {
             return res.status(404).send('Tool not found');
         }
@@ -302,26 +260,31 @@ app.get('/tool/:uuid', (req, res) => {
             ORDER BY t.sort_order ASC, t.id ASC 
             LIMIT 4`;
 
-        db.all(similarToolsQuery, [tool.group_id, tool.uuid], (err, similarTools) => {
-            if (err) {
-                return res.status(500).send('Database error');
-            }
+        const similarTools = await db.query(similarToolsQuery, [tool.group_id, tool.uuid]);
 
-            // 获取 CDN 设置
-            db.get('SELECT value FROM settings WHERE key = ?', ['cdn_url'], (err, row) => {
-                if (err) {
-                    return res.status(500).send('Database error');
-                }
-                res.render('tool', { 
-                    tool,
-                    similarTools,
-                    settings: {
-                        cdn_url: row ? row.value : ''
-                    }
-                });
-            });
+        // 获取站点设置
+        const settingsRows = await db.query('SELECT key_name, value FROM settings WHERE key_name LIKE \'site_%\'');
+        const cdnRow = await db.query('SELECT value FROM settings WHERE key_name = ?', ['cdn_url']);
+
+        const settings = {};
+        settingsRows.forEach(row => {
+            settings[row.key_name] = row.value;
         });
-    });
+
+        res.render('tool', { 
+            tool,
+            similarTools,
+            settings: {
+                site_name: settings.site_name || 'XTools - 在线工具箱',
+                site_keywords: settings.site_keywords || '',
+                site_description: settings.site_description || '',
+                cdn_url: cdnRow[0]?.value || ''
+            }
+        });
+    } catch (err) {
+        console.error('Tool detail error:', err);
+        return res.status(500).send('Database error');
+    }
 });
 
 // Admin routes
@@ -329,130 +292,119 @@ app.get('/admin/login', (req, res) => {
     res.render('admin/login');
 });
 
-app.post('/admin/login', (req, res) => {
+app.post('/admin/login', async (req, res) => {
     const { username, password } = req.body;
-    db.get('SELECT * FROM settings WHERE key = ?', ['admin_username'], (err, usernameRow) => {
-        if (err) {
-            return res.status(500).send('Database error');
-        }
+    try {
+        const usernameRow = await db.query('SELECT value FROM settings WHERE key_name = ?', ['admin_username']);
         
-        if (!usernameRow || usernameRow.value !== username) {
+        if (!usernameRow || usernameRow.length === 0 || usernameRow[0].value !== username) {
             return res.render('admin/login', { error: 'Invalid credentials' });
         }
 
-        db.get('SELECT * FROM settings WHERE key = ?', ['admin_password'], (err, passwordRow) => {
-            if (err) {
-                return res.status(500).send('Database error');
-            }
+        const passwordRow = await db.query('SELECT value FROM settings WHERE key_name = ?', ['admin_password']);
+        
+        if (!passwordRow || passwordRow.length === 0 || !bcrypt.compareSync(password, passwordRow[0].value)) {
+            return res.render('admin/login', { error: 'Invalid credentials' });
+        }
 
-            if (!passwordRow || !bcrypt.compareSync(password, passwordRow.value)) {
-                return res.render('admin/login', { error: 'Invalid credentials' });
-            }
-
-            req.session.isAuthenticated = true;
-            res.redirect('/admin/dashboard');
-        });
-    });
+        req.session.isAuthenticated = true;
+        res.redirect('/admin/dashboard');
+    } catch (err) {
+        console.error('Login error:', err);
+        return res.status(500).send('Database error');
+    }
 });
 
 // Settings routes
-app.get('/admin/settings', requireAuth, (req, res) => {
-    // 获取所有站点设置
-    db.all('SELECT key, value FROM settings WHERE key LIKE \'site_%\'', [], (err, rows) => {
-        if (err) {
-            return res.status(500).send('Database error');
-        }
+app.get('/admin/settings', requireAuth, async (req, res) => {
+    try {
+        // 获取所有站点设置
+        const rows = await db.query('SELECT key_name, value FROM settings WHERE key_name LIKE \'site_%\'');
 
         const settings = {};
         rows.forEach(row => {
-            settings[row.key] = row.value;
+            settings[row.key_name] = row.value;
         });
 
         res.render('admin/settings', { settings });
-    });
+    } catch (err) {
+        console.error('Settings error:', err);
+        return res.status(500).send('Database error');
+    }
 });
 
 // 站点设置路由
-app.post('/admin/settings/site', requireAuth, (req, res) => {
+app.post('/admin/settings/site', requireAuth, async (req, res) => {
     const { siteName, siteKeywords, siteDescription, cdnUrl } = req.body;
     const settings = [
-        { key: 'site_name', value: siteName },
-        { key: 'site_keywords', value: siteKeywords },
-        { key: 'site_description', value: siteDescription },
-        { key: 'cdn_url', value: cdnUrl }
+        { key_name: 'site_name', value: siteName },
+        { key_name: 'site_keywords', value: siteKeywords },
+        { key_name: 'site_description', value: siteDescription },
+        { key_name: 'cdn_url', value: cdnUrl }
     ];
 
-    // 使用事务更新所有设置
-    db.serialize(() => {
-        db.run('BEGIN TRANSACTION');
+    try {
+        // 使用事务更新所有设置
+        await db.query('BEGIN TRANSACTION');
 
-        try {
-            settings.forEach(setting => {
-                db.run('UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ?',
-                    [setting.value, setting.key]);
-            });
-
-            db.run('COMMIT');
-            res.render('admin/settings', {
-                success: '站点设置已更新',
-                settings: {
-                    site_name: siteName,
-                    site_keywords: siteKeywords,
-                    site_description: siteDescription,
-                    cdn_url: cdnUrl
-                }
-            });
-        } catch (err) {
-            db.run('ROLLBACK');
-            res.status(500).send('Database error');
+        for (const setting of settings) {
+            await db.query(
+                'UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key_name = ?',
+                [setting.value, setting.key_name]
+            );
         }
-    });
+
+        await db.query('COMMIT');
+
+        res.render('admin/settings', {
+            success: '站点设置已更新',
+            settings: {
+                site_name: siteName,
+                site_keywords: siteKeywords,
+                site_description: siteDescription,
+                cdn_url: cdnUrl
+            }
+        });
+    } catch (err) {
+        await db.query('ROLLBACK');
+        console.error('Settings update error:', err);
+        res.status(500).send('Database error');
+    }
 });
 
 // Export configuration
-app.get('/admin/settings/export', requireAuth, (req, res) => {
-    const exportData = {
-        groups: [],
-        tools: [],
-        exportDate: new Date().toISOString()
-    };
+app.get('/admin/settings/export', requireAuth, async (req, res) => {
+    try {
+        const exportData = {
+            groups: [],
+            tools: [],
+            exportDate: new Date().toISOString()
+        };
 
-    // Get all groups
-    db.all('SELECT * FROM groups', [], (err, groups) => {
-        if (err) {
-            console.error('Error exporting groups:', err);
-            return res.status(500).send('导出失败');
-        }
-        exportData.groups = groups;
+        // Get all groups
+        exportData.groups = await db.query('SELECT * FROM groups');
 
         // Get all tools
-        db.all('SELECT * FROM tools', [], (err, tools) => {
-            if (err) {
-                console.error('Error exporting tools:', err);
-                return res.status(500).send('导出失败');
-            }
-            exportData.tools = tools;
+        exportData.tools = await db.query('SELECT * FROM tools');
 
-            // Set headers for file download
-            res.setHeader('Content-Type', 'application/json');
-            res.setHeader('Content-Disposition', `attachment; filename=xtools-config-${new Date().toISOString().split('T')[0]}.json`);
-            res.json(exportData);
-        });
-    });
+        // Set headers for file download
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename=xtools-config-${new Date().toISOString().split('T')[0]}.json`);
+        res.json(exportData);
+    } catch (err) {
+        console.error('Error exporting data:', err);
+        return res.status(500).send('导出失败');
+    }
 });
 
 // Import configuration
-app.post('/admin/settings/import', requireAuth, upload.single('importFile'), (req, res) => {
+app.post('/admin/settings/import', requireAuth, upload.single('importFile'), async (req, res) => {
     if (!req.file) {
         return res.status(400).send('请选择要导入的文件');
     }
 
-    fs.readFile(req.file.path, 'utf8', (err, data) => {
-        if (err) {
-            console.error('Error reading import file:', err);
-            return res.status(500).send('读取文件失败');
-        }
-
+    try {
+        const data = await fs.promises.readFile(req.file.path, 'utf8');
         let importData;
         try {
             importData = JSON.parse(data);
@@ -462,45 +414,46 @@ app.post('/admin/settings/import', requireAuth, upload.single('importFile'), (re
         }
 
         // Begin transaction
-        db.serialize(() => {
-            db.run('BEGIN TRANSACTION');
+        await db.query('BEGIN TRANSACTION');
 
-            try {
-                // Clear existing data
-                db.run('DELETE FROM tools');
-                db.run('DELETE FROM groups');
+        try {
+            // Clear existing data
+            await db.query('DELETE FROM tools');
+            await db.query('DELETE FROM groups');
 
-                // Import groups
-                const insertGroup = db.prepare('INSERT INTO groups (id, name, description, created_at) VALUES (?, ?, ?, ?)');
-                importData.groups.forEach(group => {
-                    insertGroup.run([group.id, group.name, group.description, group.created_at]);
-                });
-                insertGroup.finalize();
-
-                // Import tools
-                const insertTool = db.prepare('INSERT INTO tools (id, uuid, name, description, html_content, api_endpoint, group_id, type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-                importData.tools.forEach(tool => {
-                    insertTool.run([tool.id, tool.uuid, tool.name, tool.description, tool.html_content, tool.api_endpoint, tool.group_id, tool.type, tool.created_at]);
-                });
-                insertTool.finalize();
-
-                db.run('COMMIT');
-                res.redirect('/admin/settings?success=' + encodeURIComponent('配置导入成功'));
-            } catch (error) {
-                console.error('Error during import:', error);
-                db.run('ROLLBACK');
-                res.status(500).send('导入过程中发生错误');
+            // Import groups
+            for (const group of importData.groups) {
+                await db.query(
+                    'INSERT INTO groups (id, name, description, created_at) VALUES (?, ?, ?, ?)',
+                    [group.id, group.name, group.description, group.created_at]
+                );
             }
-        });
+
+            // Import tools
+            for (const tool of importData.tools) {
+                await db.query(
+                    'INSERT INTO tools (id, uuid, name, description, html_content, api_endpoint, group_id, type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    [tool.id, tool.uuid, tool.name, tool.description, tool.html_content, tool.api_endpoint, tool.group_id, tool.type, tool.created_at]
+                );
+            }
+
+            await db.query('COMMIT');
+            res.redirect('/admin/settings?success=' + encodeURIComponent('配置导入成功'));
+        } catch (error) {
+            console.error('Error during import:', error);
+            await db.query('ROLLBACK');
+            res.status(500).send('导入过程中发生错误');
+        }
 
         // Clean up uploaded file
-        fs.unlink(req.file.path, (err) => {
-            if (err) console.error('Error deleting temp file:', err);
-        });
-    });
+        await fs.promises.unlink(req.file.path);
+    } catch (err) {
+        console.error('Error reading import file:', err);
+        return res.status(500).send('读取文件失败');
+    }
 });
 
-app.post('/admin/settings/password', requireAuth, (req, res) => {
+app.post('/admin/settings/password', requireAuth, async (req, res) => {
     const { currentPassword, newPassword, confirmPassword } = req.body;
 
     // 验证新密码
@@ -512,214 +465,219 @@ app.post('/admin/settings/password', requireAuth, (req, res) => {
         return res.render('admin/settings', { error: '新密码长度不能小于6位' });
     }
 
-    // 验证当前密码
-    db.get('SELECT * FROM settings WHERE key = ?', ['admin_password'], (err, row) => {
-        if (err) {
-            return res.status(500).send('Database error');
-        }
-
-        if (!row || !bcrypt.compareSync(currentPassword, row.value)) {
+    try {
+        // 验证当前密码
+        const rows = await db.query('SELECT value FROM settings WHERE key_name = ?', ['admin_password']);
+        
+        if (!rows || rows.length === 0 || !bcrypt.compareSync(currentPassword, rows[0].value)) {
             return res.render('admin/settings', { error: '当前密码错误' });
         }
 
         // 更新密码
         const hashedPassword = bcrypt.hashSync(newPassword, 10);
-        db.run('UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ?',
-            [hashedPassword, 'admin_password'],
-            (err) => {
-                if (err) {
-                    return res.status(500).send('Database error');
-                }
-                res.render('admin/settings', { success: '密码修改成功' });
-            }
-        );
-    });
+        await db.query('UPDATE settings SET value = ? WHERE key_name = ?', [hashedPassword, 'admin_password']);
+        
+        res.render('admin/settings', { success: '密码已更新' });
+    } catch (err) {
+        console.error('Password update error:', err);
+        return res.status(500).send('Database error');
+    }
 });
 
 // Update tool order
 // Update group order
-app.post('/admin/group/reorder', requireAuth, (req, res) => {
+app.post('/admin/group/reorder', requireAuth, async (req, res) => {
     const { groupId, newOrder } = req.body;
     
     if (!groupId || newOrder === undefined) {
         return res.status(400).json({ error: '缺少必要参数' });
     }
 
-    db.run('UPDATE groups SET sort_order = ? WHERE id = ?', [newOrder, groupId], (err) => {
-        if (err) {
-            console.error('Error updating group order:', err);
-            return res.status(500).json({ error: '更新排序失败' });
-        }
+    try {
+        await db.query('UPDATE groups SET sort_order = ? WHERE id = ?', [newOrder, groupId]);
         res.json({ success: true });
-    });
+    } catch (err) {
+        console.error('Error updating group order:', err);
+        return res.status(500).json({ error: '更新排序失败' });
+    }
 });
 
-app.post('/admin/tool/reorder', requireAuth, (req, res) => {
+app.post('/admin/tool/reorder', requireAuth, async (req, res) => {
     const { toolId, newOrder } = req.body;
     
     if (!toolId || newOrder === undefined) {
         return res.status(400).json({ error: '缺少必要参数' });
     }
 
-    db.run('UPDATE tools SET sort_order = ? WHERE id = ?', [newOrder, toolId], (err) => {
-        if (err) {
-            console.error('Error updating tool order:', err);
-            return res.status(500).json({ error: '更新排序失败' });
-        }
+    try {
+        await db.query('UPDATE tools SET sort_order = ? WHERE id = ?', [newOrder, toolId]);
         res.json({ success: true });
-    });
+    } catch (err) {
+        console.error('Error updating tool order:', err);
+        return res.status(500).json({ error: '更新排序失败' });
+    }
 });
 
-app.get('/admin/dashboard', requireAuth, (req, res) => {
-    db.all('SELECT * FROM tools', [], (err, tools) => {
-        if (err) {
-            return res.status(500).send('Database error');
-        }
-        res.render('admin/dashboard', { tools });
-    });
+app.get('/admin/dashboard', requireAuth, async (req, res) => {
+    try {
+        const tools = await db.query('SELECT * FROM tools');
+        const groups = await db.query('SELECT * FROM groups ORDER BY sort_order ASC, id ASC');
+        res.render('admin/dashboard', { tools, groups });
+    } catch (err) {
+        console.error('Dashboard error:', err);
+        return res.status(500).send('Database error');
+    }
 });
 
-app.get('/admin/tool/new', requireAuth, (req, res) => {
-    db.all('SELECT * FROM groups ORDER BY name', [], (err, groups) => {
-        if (err) {
-            return res.status(500).send('Database error');
-        }
-
-        // 获取 CDN 设置
-        db.get('SELECT value FROM settings WHERE key = ?', ['cdn_url'], (err, row) => {
-            if (err) {
-                return res.status(500).send('Database error');
+app.get('/admin/tool/new', requireAuth, async (req, res) => {
+    try {
+        const groups = await db.query('SELECT * FROM groups ORDER BY name');
+        const rows = await db.query('SELECT value FROM settings WHERE key_name = ?', ['cdn_url']);
+        
+        res.render('admin/tool-form', { 
+            tool: {}, 
+            groups,
+            settings: {
+                cdn_url: rows.length > 0 ? rows[0].value : ''
             }
-            res.render('admin/tool-form', { 
-                tool: {}, 
-                groups,
-                settings: {
-                    cdn_url: row ? row.value : ''
-                }
-            });
         });
-    });
+    } catch (err) {
+        console.error('New tool form error:', err);
+        return res.status(500).send('Database error');
+    }
 });
 
-app.post('/admin/tool', requireAuth, (req, res) => {
+app.post('/admin/tool', requireAuth, async (req, res) => {
     const { name, description, html_content, api_endpoint, group_id, type } = req.body;
     const uuid = uuidv4();
-    db.run(`INSERT INTO tools (uuid, name, description, html_content, api_endpoint, group_id, type) 
+    
+    try {
+        await db.query(`INSERT INTO tools (uuid, name, description, html_content, api_endpoint, group_id, type) 
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [uuid, name, description, html_content, api_endpoint, group_id || null, type || 'html'],
-        (err) => {
-            if (err) {
-                return res.status(500).send('Database error');
-            }
-            res.redirect('/admin/dashboard');
-        });
+            [uuid, name, description, html_content, api_endpoint, group_id || null, type || 'html']
+        );
+        res.redirect('/admin/dashboard');
+    } catch (err) {
+        console.error('Create tool error:', err);
+        return res.status(500).send('Database error');
+    }
 });
 
-app.get('/admin/tool/:id/edit', requireAuth, (req, res) => {
-    db.get('SELECT * FROM tools WHERE id = ?', [req.params.id], (err, tool) => {
-        if (err) {
-            return res.status(500).send('Database error');
-        }
+app.get('/admin/tool/:id/edit', requireAuth, async (req, res) => {
+    try {
+        const tools = await db.query('SELECT * FROM tools WHERE id = ?', [req.params.id]);
+        const tool = tools[0];
+
         if (!tool) {
             return res.status(404).send('Tool not found');
         }
-        db.all('SELECT * FROM groups ORDER BY name', [], (err, groups) => {
-            if (err) {
-                return res.status(500).send('Database error');
-            }
 
-            // 获取 CDN 设置
-            db.get('SELECT value FROM settings WHERE key = ?', ['cdn_url'], (err, row) => {
-                if (err) {
-                    return res.status(500).send('Database error');
-                }
-                res.render('admin/tool-form', { 
-                    tool, 
-                    groups,
-                    settings: {
-                        cdn_url: row ? row.value : ''
-                    }
-                });
-            });
+        // 获取站点设置
+        const settingsRows = await db.query('SELECT key_name, value FROM settings WHERE key_name LIKE \'site_%\'');
+        const settings = {};
+        settingsRows.forEach(row => {
+            settings[row.key_name] = row.value;
         });
-    });
+
+        const groups = await db.query('SELECT * FROM groups ORDER BY name');
+        const cdnRows = await db.query('SELECT value FROM settings WHERE key_name = ?', ['cdn_url']);
+        
+        res.render('admin/tool-form', { 
+            tool, 
+            groups,
+            settings: {
+                cdn_url: cdnRows.length > 0 ? cdnRows[0].value : '',
+                site_name: settings.site_name || 'XTools - 在线工具箱',
+                site_keywords: settings.site_keywords || '',
+                site_description: settings.site_description || ''
+            }
+        });
+    } catch (err) {
+        console.error('Tool detail error:', err);
+        return res.status(500).send('Database error');
+    }
 });
 
-app.post('/admin/tool/:id', requireAuth, (req, res) => {
+app.post('/admin/tool/:id', requireAuth, async (req, res) => {
     const { name, description, html_content, api_endpoint, group_id, type } = req.body;
-    db.run(`UPDATE tools SET name = ?, description = ?, html_content = ?, 
+    
+    try {
+        await db.query(`UPDATE tools SET name = ?, description = ?, html_content = ?, 
             api_endpoint = ?, group_id = ?, type = ? WHERE id = ?`,
-        [name, description, html_content, api_endpoint, group_id || null, type || 'html', req.params.id],
-        (err) => {
-            if (err) {
-                return res.status(500).send('Database error');
-            }
-            res.redirect('/admin/dashboard');
-        });
+            [name, description, html_content, api_endpoint, group_id || null, type || 'html', req.params.id]
+        );
+        res.redirect('/admin/dashboard');
+    } catch (err) {
+        console.error('Update tool error:', err);
+        return res.status(500).send('Database error');
+    }
 });
 
-app.post('/admin/tool/:id/delete', requireAuth, (req, res) => {
-    db.run('DELETE FROM tools WHERE id = ?', [req.params.id], (err) => {
-        if (err) {
-            return res.status(500).send('Database error');
-        }
+app.post('/admin/tool/:id/delete', requireAuth, async (req, res) => {
+    try {
+        await db.query('DELETE FROM tools WHERE id = ?', [req.params.id]);
         res.redirect('/admin/dashboard');
-    });
+    } catch (err) {
+        console.error('Delete tool error:', err);
+        return res.status(500).send('Database error');
+    }
 });
 
 // 分组管理路由
-app.get('/admin/groups', requireAuth, (req, res) => {
-    db.all('SELECT * FROM groups ORDER BY sort_order ASC, id ASC', [], (err, groups) => {
-        if (err) {
-            return res.status(500).send('Database error');
-        }
+app.get('/admin/groups', requireAuth, async (req, res) => {
+    try {
+        const groups = await db.query('SELECT * FROM groups ORDER BY sort_order ASC, id ASC');
         res.render('admin/groups', { groups });
-    });
+    } catch (err) {
+        console.error('List groups error:', err);
+        return res.status(500).send('Database error');
+    }
 });
 
-app.post('/admin/group', requireAuth, (req, res) => {
+app.post('/admin/group', requireAuth, async (req, res) => {
     const { name, description, display_style } = req.body;
-    db.run('INSERT INTO groups (name, description, display_style) VALUES (?, ?, ?)',
-        [name, description, display_style],
-        (err) => {
-            if (err) {
-                return res.status(500).send('Database error');
-            }
-            res.redirect('/admin/groups');
-        }
-    );
+    
+    try {
+        await db.query('INSERT INTO groups (name, description, display_style) VALUES (?, ?, ?)',
+            [name, description, display_style]
+        );
+        res.redirect('/admin/groups');
+    } catch (err) {
+        console.error('Create group error:', err);
+        return res.status(500).send('Database error');
+    }
 });
 
-app.post('/admin/group/:id', requireAuth, (req, res) => {
+app.post('/admin/group/:id', requireAuth, async (req, res) => {
     const { name, description, display_style } = req.body;
-    db.run('UPDATE groups SET name = ?, description = ?, display_style = ? WHERE id = ?',
-        [name, description, display_style, req.params.id],
-        (err) => {
-            if (err) {
-                console.error('Error updating group:', err);
-                return res.status(500).send('Database error');
-            }
-            res.redirect('/admin/groups');
-        });
+    
+    try {
+        await db.query('UPDATE groups SET name = ?, description = ?, display_style = ? WHERE id = ?',
+            [name, description, display_style, req.params.id]
+        );
+        res.redirect('/admin/groups');
+    } catch (err) {
+        console.error('Update group error:', err);
+        return res.status(500).send('Database error');
+    }
 });
 
-app.delete('/admin/group/:id', requireAuth, (req, res) => {
-    // 先检查是否有工具在使用该分组
-    db.get('SELECT COUNT(*) as count FROM tools WHERE group_id = ?', [req.params.id], (err, result) => {
-        if (err) {
-            return res.status(500).json({ error: 'Database error' });
-        }
-        if (result.count > 0) {
+app.delete('/admin/group/:id', requireAuth, async (req, res) => {
+    try {
+        // 先检查是否有工具在使用该分组
+        const rows = await db.query('SELECT COUNT(*) as count FROM tools WHERE group_id = ?', [req.params.id]);
+        
+        if (rows[0].count > 0) {
             return res.status(400).json({ error: '该分组下还有工具，无法删除' });
         }
+
         // 如果没有工具使用，则删除分组
-        db.run('DELETE FROM groups WHERE id = ?', [req.params.id], (err) => {
-            if (err) {
-                return res.status(500).json({ error: 'Database error' });
-            }
-            res.json({ success: true });
-        });
-    });
+        await db.query('DELETE FROM groups WHERE id = ?', [req.params.id]);
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Delete group error:', err);
+        return res.status(500).json({ error: 'Database error' });
+    }
 });
 
 app.listen(port, () => {

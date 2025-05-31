@@ -71,10 +71,10 @@
                             <a href="#group-<%= group.id %>" class="list-group-item list-group-item-action">
                                 <%= group.name %>
                                     <span class="badge bg-secondary float-end">
-                                        <%= tools.filter(t=> t.group_id == group.id).length %>
+                                        <%= groupedTools[group.name] ? groupedTools[group.name].length : 0 %>
                                     </span>
                             </a>
-                            <% }); %>
+                        <% }); %>
                     </div>
                 </div>
             </div>
@@ -87,46 +87,50 @@
                             <%= group.name %>
                         </h3>
                         <% if (!group.display_style || group.display_style === 'card') { %>
-                        <!-- 卡片式布局 -->
-                        <div class="row">
-                            <% tools.filter(tool=> tool.group_id === group.id).forEach(function(tool) { %>
-                                <div class="col-12 col-md-6 col-lg-4 col-xl-3 mb-4">
-                                    <div class="card h-100">
-                                        <div class="card-body">
-                                            <h5 class="card-title">
-                                                <%= tool.name %>
-                                            </h5>
-                                            <p class="card-text description" title="<%= tool.description %>">
-                                                <%= tool.description %>
-                                            </p>
-                                        </div>
-                                        <div class="card-footer bg-transparent border-top-0">
-                                            <a href="/tool/<%= tool.uuid %>" class="btn btn-primary w-100">使用工具</a>
-                                        </div>
-                                    </div>
-                                </div>
-                            <% }); %>
-                        </div>
-                        <% } else if (group.display_style === 'links') { %>
-                        <!-- 链接式布局 -->
-                        <div class="row">
-                            <% tools.filter(tool=> tool.group_id === group.id).forEach(function(tool) { %>
-                                <div class="col-12 col-md-6 col-lg-4 col-xl-3 mb-3">
-                                    <a href="/tool/<%= tool.uuid %>" class="list-group-item list-group-item-action h-100">
-                                        <div class="d-flex justify-content-between align-items-start h-100">
-                                            <div class="flex-grow-1">
-                                                <h5 class="mb-1"><%= tool.name %></h5>
-                                                <p class="mb-1 text-muted small description" title="<%= tool.description %>"><%= tool.description %></p>
+                            <!-- 卡片式布局 -->
+                            <div class="row">
+                                <% if (groupedTools[group.name]) { %>
+                                    <% groupedTools[group.name].forEach(function(tool) { %>
+                                        <div class="col-12 col-md-6 col-lg-4 col-xl-3 mb-4">
+                                            <div class="card h-100">
+                                                <div class="card-body">
+                                                    <h5 class="card-title">
+                                                        <%= tool.name %>
+                                                    </h5>
+                                                    <p class="card-text description" title="<%= tool.description %>">
+                                                        <%= tool.description %>
+                                                    </p>
+                                                </div>
+                                                <div class="card-footer bg-transparent border-top-0">
+                                                    <a href="/tool/<%= tool.uuid %>" class="btn btn-primary w-100">使用工具</a>
+                                                </div>
                                             </div>
-                                            <i class="bi bi-chevron-right text-muted ms-2"></i>
                                         </div>
-                                    </a>
-                                </div>
-                            <% }); %>
-                        </div>
+                                    <% }); %>
+                                <% } %>
+                            </div>
+                        <% } else if (group.display_style === 'links') { %>
+                            <!-- 链接式布局 -->
+                            <div class="row">
+                                <% if (groupedTools[group.name]) { %>
+                                    <% groupedTools[group.name].forEach(function(tool) { %>
+                                        <div class="col-12 col-md-6 col-lg-4 col-xl-3 mb-3">
+                                            <a href="/tool/<%= tool.uuid %>" class="list-group-item list-group-item-action h-100">
+                                                <div class="d-flex justify-content-between align-items-start h-100">
+                                                    <div class="flex-grow-1">
+                                                        <h5 class="mb-1"><%= tool.name %></h5>
+                                                        <p class="mb-1 text-muted small description" title="<%= tool.description %>"><%= tool.description %></p>
+                                                    </div>
+                                                    <i class="bi bi-chevron-right text-muted ms-2"></i>
+                                                </div>
+                                            </a>
+                                        </div>
+                                    <% }); %>
+                                <% } %>
+                            </div>
                         <% } %>
                     </div>
-                    <% }); %>
+                <% }); %>
             </div>
         </div>
     </div>
