@@ -40,78 +40,79 @@
                 <input type="text" class="form-control" id="name" name="name" value="<%= tool.name || '' %>" required>
             </div>
             <% if (tool.uuid) { %>
-            <div class="mb-3">
-                <label class="form-label">UUID</label>
-                <input type="text" class="form-control" value="<%= tool.uuid %>" readonly>
-            </div>
-            <% } %>
-            <div class="mb-3">
-                <label for="description" class="form-label">工具描述</label>
-                <textarea class="form-control" id="description" name="description" rows="3"
-                    required><%= tool.description || '' %></textarea>
-            </div>
-            <div class="mb-3">
-                <label for="group_id" class="form-label">分组</label>
-                <select class="form-select" id="group_id" name="group_id">
-                    <option value="">[无分组]</option>
-                    <% groups.forEach(function(group) { %>
-                        <option value="<%= group.id %>" <%=tool.group_id===group.id ? 'selected' : '' %>><%= group.name
-                                %>
-                        </option>
-                        <% }); %>
-                </select>
-            </div>
-            <div class="mb-3">
-                <label for="type" class="form-label">工具类型</label>
-                <select class="form-select" id="type" name="type" onchange="toggleContentType()">
-                    <option value="html" <%=(!tool.type || tool.type==='html' ) ? 'selected' : '' %>>HTML 工具</option>
-                    <option value="link" <%=tool.type==='link' ? 'selected' : '' %>>链接工具</option>
-                </select>
-            </div>
-            <div class="mb-3 position-relative" id="contentWrapper">
-                <label for="html_content" class="form-label" id="contentLabel">HTML 内容</label>
-                <div id="linkInputs" style="display: none;">
-                    <div class="link-groups mt-4">
-                        <div class="link-group mb-2">
-                            <div class="row g-2">
-                                <div class="col-4">
-                                    <div class="input-group">
-                                        <span class="input-group-text">标题</span>
-                                        <input type="text" class="form-control link-title" placeholder="请输入链接标题"
-                                            value="">
+                <div class="mb-3">
+                    <label class="form-label">UUID</label>
+                    <input type="text" class="form-control" value="<%= tool.uuid %>" readonly>
+                </div>
+                <% } %>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">工具描述</label>
+                        <textarea class="form-control" id="description" name="description"
+                            rows="3"><%= tool.description || '' %></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="group_id" class="form-label">分组</label>
+                        <select class="form-select" id="group_id" name="group_id">
+                            <option value="">[无分组]</option>
+                            <% groups.forEach(function(group) { %>
+                                <option value="<%= group.id %>" <%=tool.group_id===group.id ? 'selected' : '' %>><%=
+                                        group.name %>
+                                </option>
+                                <% }); %>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="type" class="form-label">工具类型</label>
+                        <select class="form-select" id="type" name="type" onchange="toggleContentType()">
+                            <option value="html" <%=(!tool.type || tool.type==='html' ) ? 'selected' : '' %>>HTML 工具
+                            </option>
+                            <option value="link" <%=tool.type==='link' ? 'selected' : '' %>>链接工具</option>
+                        </select>
+                    </div>
+                    <div class="mb-3 position-relative" id="contentWrapper">
+                        <label for="html_content" class="form-label" id="contentLabel">HTML 内容</label>
+                        <div id="linkInputs" style="display: none;">
+                            <div class="link-groups mt-4">
+                                <div class="link-group mb-2">
+                                    <div class="row g-2">
+                                        <div class="col-4">
+                                            <div class="input-group">
+                                                <span class="input-group-text">标题</span>
+                                                <input type="text" class="form-control link-title" placeholder="请输入链接标题"
+                                                    value="">
+                                            </div>
+                                        </div>
+                                        <div class="col-7">
+                                            <div class="input-group">
+                                                <span class="input-group-text">URL</span>
+                                                <input type="text" class="form-control link-url" placeholder="请输入链接地址"
+                                                    value="<%= tool.html_content || '' %>">
+                                            </div>
+                                        </div>
+                                        <div class="col-1">
+                                            <button type="button" class="btn btn-outline-danger w-100"
+                                                onclick="removeLinkInput(this)">删除</button>
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="col-7">
-                                    <div class="input-group">
-                                        <span class="input-group-text">URL</span>
-                                        <input type="text" class="form-control link-url" placeholder="请输入链接地址"
-                                            value="<%= tool.html_content || '' %>">
-                                    </div>
-                                </div>
-                                <div class="col-1">
-                                    <button type="button" class="btn btn-outline-danger w-100"
-                                        onclick="removeLinkInput(this)">删除</button>
                                 </div>
                             </div>
+                            <div class="text-end mt-2">
+                                <button type="button" class="btn btn-success" onclick="addLinkInput()">添加链接</button>
+                            </div>
                         </div>
+                        <textarea class="form-control" id="html_content" name="html_content"
+                            rows="10"><%= tool.html_content || '' %></textarea>
                     </div>
-                    <div class="text-end mt-2">
-                        <button type="button" class="btn btn-success" onclick="addLinkInput()">添加链接</button>
+                    <div class="mb-3">
+                        <label for="api_endpoint" class="form-label">API 端点（可选）</label>
+                        <input type="text" class="form-control" id="api_endpoint" name="api_endpoint"
+                            value="<%= tool.api_endpoint || '' %>">
+                        <div class="form-text">如果工具需要后端API支持，请在这里填写API端点</div>
                     </div>
-                </div>
-                <textarea class="form-control" id="html_content" name="html_content"
-                    rows="10"><%= tool.html_content || '' %></textarea>
-            </div>
-            <div class="mb-3">
-                <label for="api_endpoint" class="form-label">API 端点（可选）</label>
-                <input type="text" class="form-control" id="api_endpoint" name="api_endpoint"
-                    value="<%= tool.api_endpoint || '' %>">
-                <div class="form-text">如果工具需要后端API支持，请在这里填写API端点</div>
-            </div>
-            <div class="mb-3">
-                <a href="/admin/dashboard" class="btn btn-secondary">返回</a>
-                <button type="submit" class="btn btn-primary">保存</button>
-            </div>
+                    <div class="mb-3">
+                        <a href="/admin/dashboard" class="btn btn-secondary">返回</a>
+                        <button type="submit" class="btn btn-primary">保存</button>
+                    </div>
         </form>
     </div>
 
