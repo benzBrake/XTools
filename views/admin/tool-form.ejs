@@ -190,8 +190,7 @@
                 linkInputs.style.display = 'block';
                 textArea.style.display = 'none';
                 if (editor) {
-                    editor.toTextArea();
-                    editor = null;
+                    editor.getWrapperElement().style.display = 'none';
                 }
 
                 // Initialize link inputs if there's existing data
@@ -250,8 +249,10 @@
             } else {
                 contentLabel.textContent = 'HTML 内容';
                 linkInputs.style.display = 'none';
-                textArea.style.display = 'block';
-                if (!editor) {
+                if (editor) {
+                    editor.getWrapperElement().style.display = '';
+                    textArea.style.display = 'none';
+                } else {
                     editor = CodeMirror.fromTextArea(textArea, {
                         mode: "htmlmixed",
                         theme: "monokai",
