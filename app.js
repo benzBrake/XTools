@@ -52,6 +52,16 @@ db.serialize(() => {
 
     db.run(`CREATE TABLE IF NOT EXISTS groups (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        display_style TEXT DEFAULT 'card',
+        sort_order INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`);
+
+    db.run(`CREATE TABLE IF NOT EXISTS groups (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE,
         description TEXT,
         sort_order INTEGER DEFAULT 0,
@@ -668,40 +678,46 @@ app.get('/admin/groups', requireAuth, (req, res) => {
 });
 
 app.post('/admin/group', requireAuth, (req, res) => {
-    const { name, description } = req.body;
-    db.run('INSERT INTO groups (name, description) VALUES (?, ?)',
-        [name, description],
+    const { name, description, display_style } = req.body;
+    db.run('INSERT INTO groups (name, description, display_style) VALUES (?, ?, ?)',
+        [name, description, display_style],
         (err) => {
             if (err) {
                 return res.status(500).send('Database error');
             }
             res.redirect('/admin/groups');
-        });
+        }
+    );
 });
 
 app.post('/admin/group/:id', requireAuth, (req, res) => {
-    const { name, description } = req.body;
-    db.run('UPDATE groups SET name = ?, description = ? WHERE id = ?',
-        [name, description, req.params.id],
+    const { name, description, display_style } = req.body;
+    db.run('UPDATE groups SET name = ?, description = ?, display_style = ? WHERE id = ?',
+        [name, description, display_style, req.params.id],
         (err) => {
             if (err) {
+                console.error('Error updating group:', err);
                 return res.status(500).send('Database error');
             }
             res.redirect('/admin/groups');
         });
 });
 
-app.post('/admin/group/:id/delete', requireAuth, (req, res) => {
-    db.run('DELETE FROM groups WHERE id = ?', [req.params.id], (err) => {
+app.delete('/admin/group/:id', requireAuth, (req, res) => {
+    // 先检查是否有工具在使用该分组
+    db.get('SELECT COUNT(*) as count FROM tools WHERE group_id = ?', [req.params.id], (err, result) => {
         if (err) {
-            return res.status(500).send('Database error');
+            return res.status(500).json({ error: 'Database error' });
         }
-        // 将该分组下的工具的 group_id 设为 null
-        db.run('UPDATE tools SET group_id = NULL WHERE group_id = ?', [req.params.id], (err) => {
+        if (result.count > 0) {
+            return res.status(400).json({ error: '该分组下还有工具，无法删除' });
+        }
+        // 如果没有工具使用，则删除分组
+        db.run('DELETE FROM groups WHERE id = ?', [req.params.id], (err) => {
             if (err) {
-                return res.status(500).send('Database error');
+                return res.status(500).json({ error: 'Database error' });
             }
-            res.redirect('/admin/groups');
+            res.json({ success: true });
         });
     });
 });
