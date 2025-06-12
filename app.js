@@ -533,16 +533,23 @@ app.post('/admin/group/reorder', requireAuth, async (req, res) => {
 });
 
 app.post('/admin/tool/reorder', requireAuth, async (req, res) => {
-    const { toolId, newOrder } = req.body;
+    const { toolOrder } = req.body;
 
-    if (!toolId || newOrder === undefined) {
-        return res.status(400).json({ error: '缺少必要参数' });
+    if (!Array.isArray(toolOrder)) {
+        return res.status(400).json({ error: '无效的请求，缺少 toolOrder 数组' });
     }
 
     try {
-        await db.query('UPDATE tools SET sort_order = ? WHERE id = ?', [newOrder, toolId]);
+        await db.query('BEGIN TRANSACTION');
+        for (let i = 0; i < toolOrder.length; i++) {
+            const toolId = toolOrder[i];
+            const newOrder = i;
+            await db.query('UPDATE tools SET sort_order = ? WHERE id = ?', [newOrder, toolId]);
+        }
+        await db.query('COMMIT');
         res.json({ success: true });
     } catch (err) {
+        await db.query('ROLLBACK');
         console.error('Error updating tool order:', err);
         return res.status(500).json({ error: '更新排序失败' });
     }
@@ -550,9 +557,43 @@ app.post('/admin/tool/reorder', requireAuth, async (req, res) => {
 
 app.get('/admin/dashboard', requireAuth, async (req, res) => {
     try {
-        const tools = await db.query('SELECT * FROM tools');
+        const selectedGroupId = req.query.group_id;
+        const { sortBy, order } = req.query;
+
+        let toolsQuery = `
+            SELECT t.*, g.name as group_name 
+            FROM tools t 
+            LEFT JOIN groups g ON t.group_id = g.id`;
+        const queryParams = [];
+
+        if (selectedGroupId) {
+            toolsQuery += ' WHERE t.group_id = ?';
+            queryParams.push(selectedGroupId);
+            toolsQuery += ' ORDER BY t.sort_order ASC, t.id ASC';
+        } else {
+            const sortableColumns = {
+                'id': 't.id',
+                'name': 't.name',
+                'group_name': 'g.name',
+                'created_at': 't.created_at',
+                'sort_order': 't.sort_order'
+            };
+            const sortColumn = sortableColumns[sortBy] || 't.sort_order';
+            const sortOrder = (order === 'desc') ? 'DESC' : 'ASC';
+            
+            toolsQuery += ` ORDER BY ${sortColumn} ${sortOrder}, t.id ASC`;
+        }
+
+        const tools = await db.query(toolsQuery, queryParams);
         const groups = await db.query('SELECT * FROM groups ORDER BY sort_order ASC, id ASC');
-        res.render('admin/dashboard', { tools, groups });
+        
+        res.render('admin/dashboard', { 
+            tools, 
+            groups,
+            selectedGroupId: selectedGroupId,
+            sortBy: sortBy || 'sort_order',
+            order: order || 'asc'
+        });
     } catch (err) {
         console.error('Dashboard error:', err);
         return res.status(500).send('Database error');

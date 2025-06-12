@@ -39,17 +39,65 @@
     </nav>
 
     <div class="container my-4">
-        <h2>工具列表</h2>
+        <h2>工具列表 <span id="sort-status" class="ms-3 fs-6 fw-normal"></span></h2>
+
+        <% if (!locals.selectedGroupId) { %>
+            <div class="alert alert-info">
+                选择了分类后，可以对分类下的工具进行拖拽排序。
+            </div>
+        <% } %>
+
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <form action="/admin/dashboard" method="GET" id="filterForm">
+                    <div class="input-group">
+                        <select name="group_id" class="form-select" onchange="document.getElementById('filterForm').submit();">
+                            <option value="">所有分类</option>
+                            <% groups.forEach(function(group) { %>
+                                <option value="<%= group.id %>" <%= locals.selectedGroupId == group.id ? 'selected' : '' %> >
+                                    <%= group.name %>
+                                </option>
+                            <% }); %>
+                        </select>
+                        <a href="/admin/dashboard" class="btn btn-outline-secondary">重置</a>
+                    </div>
+                </form>
+            </div>
+        </div>
         <div class="table-responsive">
             <table class="table table-striped">
                 <thead>
                     <tr>
-                        <th style="width: 50px;">排序</th>
-                        <th>ID</th>
-                        <th>名称</th>
-                        <th>描述</th>
-                        <th>创建时间</th>
-                        <th>操作</th>
+                        <% if (locals.selectedGroupId) { %>
+                            <th style="width: 50px;">排序</th>
+                            <th style="width: 60px;">ID</th>
+                            <th style="width: 150px;">分类</th>
+                            <th style="width: 120px;">名称</th>
+                            <th style="width: 200px;">描述</th>
+                            <th style="width: 150px;">创建时间</th>
+                            <th style="width: 150px;">操作</th>
+                        <% } else { %>
+                            <% 
+                                const sortParams = (field) => {
+                                    const currentSort = locals.sortBy === field;
+                                    const order = currentSort && locals.order === 'asc' ? 'desc' : 'asc';
+                                    return `sortBy=${field}&order=${order}`;
+                                };
+                                const sortIcon = (field) => {
+                                    if (locals.sortBy === field) {
+                                        return `<i class="bi bi-sort-${locals.order === 'asc' ? 'up' : 'down'}"></i>`;
+                                    }
+                                    return '';
+                                };
+                            %>
+                            <th style="width: 50px;"><a href="?<%= sortParams('sort_order') %>">排序 <%- sortIcon('sort_order') %></a></th>
+                            <th style="width: 60px;"><a href="?<%= sortParams('id') %>">ID <%- sortIcon('id') %></a></th>
+                            <th style="width: 150px;"><a href="?<%= sortParams('group_name') %>">分类 <%- sortIcon('group_name') %></a></th>
+                            <th style="width: 120px;"><a href="?<%= sortParams('name') %>">名称 <%- sortIcon('name') %></a></th>
+                            <th style="width: 200px;">描述</th>
+                            <th style="width: 150px;"><a href="?<%= sortParams('created_at') %>">创建时间 <%- sortIcon('created_at') %></a></th>
+                            <th style="width: 150px;">操作</th>
+                        <% } %>
                     </tr>
                 </thead>
                 <tbody>
@@ -57,9 +105,10 @@
                         <tr data-id="<%= tool.id %>" data-order="<%= tool.sort_order %>">
                             <td class="sort-handle"><i class="bi bi-grip-vertical"></i></td>
                             <td><%= tool.id %></td>
+                            <td><%= tool.group_name || '未分类' %></td>
                             <td><%= tool.name %></td>
-                            <td><%= tool.description %></td>
-                            <td><%= tool.created_at %></td>
+                            <td class="text-truncate" style="max-width: 200px;" title="<%= tool.description %>"><%= tool.description %></td>
+                            <td><%= new Date(tool.created_at).toLocaleString() %></td>
                             <td>
                                 <a href="/admin/tool/<%= tool.id %>/edit" class="btn btn-sm btn-primary">编辑</a>
                                 <form action="/admin/tool/<%= tool.id %>/delete" method="POST" class="d-inline">
@@ -79,29 +128,52 @@
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const tbody = document.querySelector('tbody');
-            new Sortable(tbody, {
-                handle: '.sort-handle',
-                animation: 150,
-                onEnd: function(evt) {
-                    const rows = Array.from(tbody.querySelectorAll('tr'));
-                    rows.forEach((row, index) => {
-                        const toolId = row.dataset.id;
+            const isFiltered = !!"<%= locals.selectedGroupId %>";
+
+            if (isFiltered) {
+                new Sortable(tbody, {
+                    handle: '.sort-handle',
+                    animation: 300,
+                    onEnd: function(evt) {
+                        const statusEl = document.getElementById('sort-status');
+                        statusEl.textContent = '正在保存排序...';
+                        statusEl.className = 'ms-3 fs-6 fw-normal text-muted';
+
+                        const rows = Array.from(tbody.querySelectorAll('tr'));
+                        const toolOrder = rows.map(row => row.dataset.id);
+
                         fetch('/admin/tool/reorder', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
                             },
-                            body: JSON.stringify({
-                                toolId: toolId,
-                                newOrder: index
-                            })
-                        }).catch(error => {
+                            body: JSON.stringify({ toolOrder })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                statusEl.textContent = '排序已保存！';
+                                statusEl.className = 'ms-3 fs-6 fw-normal text-success';
+                            } else {
+                                statusEl.textContent = '保存失败！';
+                                statusEl.className = 'ms-3 fs-6 fw-normal text-danger';
+                                alert('更新排序失败: ' + (data.error || '未知错误'));
+                            }
+                        })
+                        .catch(error => {
                             console.error('Error updating tool order:', error);
+                            statusEl.textContent = '保存失败！';
+                            statusEl.className = 'ms-3 fs-6 fw-normal text-danger';
                             alert('更新排序失败');
+                        })
+                        .finally(() => {
+                            setTimeout(() => {
+                                statusEl.textContent = '';
+                            }, 3000);
                         });
-                    });
-                }
-            });
+                    }
+                });
+            }
         });
     </script>
 </body>
