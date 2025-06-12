@@ -30,11 +30,27 @@
             height: 4.5em;
             line-height: 1.5em;
         }
+
+        .headroom {
+            will-change: transform;
+            transition: transform 200ms linear;
+        }
+        .headroom--pinned {
+            transform: translateY(0%);
+        }
+        .headroom--unpinned {
+            transform: translateY(-100%);
+        }
+
+        #main-content {
+            /* Smoothly animate the padding change */
+            transition: padding-top 200ms linear;
+        }
     </style>
 </head>
 
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark headroom fixed-top">
         <div class="container">
             <a class="navbar-brand" href="/"><%= settings.site_name %></a>
             <!-- 移动端搜索按钮 -->
@@ -58,10 +74,10 @@
         </div>
     </div>
 
-    <div class="container-fluid my-4">
+    <div id="main-content" class="container-xl my-4">
         <div class="row">
             <!-- 左侧导航栏 -->
-            <div class="col-md-3 col-lg-2">
+            <div id="sidebar" class="col-md-3 col-lg-2">
                 <div class="card">
                     <div class="card-header">
                         <h5 class="mb-0">工具分组</h5>
@@ -119,7 +135,6 @@
                                                 <div class="d-flex justify-content-between align-items-start h-100">
                                                     <div class="flex-grow-1">
                                                         <h5 class="mb-1"><%= tool.name %></h5>
-                                                        <p class="mb-1 text-muted small card-text description" title="<%= tool.description %>"><%= tool.description %></p>
                                                     </div>
                                                     <i class="bi bi-chevron-right text-muted ms-2"></i>
                                                 </div>
@@ -137,8 +152,42 @@
 
     <script
         src="<%= replaceCdnUrl('https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js', settings.cdn_url) %>"></script>
+    <script src="<%= replaceCdnUrl('https://cdn.jsdelivr.net/npm/headroom.js/dist/headroom.min.js', settings.cdn_url) %>"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function () {
+            // Headroom.js initialization
+            const navbar = document.querySelector('.navbar');
+            const mainContent = document.getElementById('main-content');
+            if (navbar && mainContent) {
+                const headroom = new Headroom(navbar, {
+                    // When header is visible
+                    onPin: () => {
+                        mainContent.style.paddingTop = navbar.offsetHeight + 'px';
+                    },
+                    // When header is hidden
+                    onUnpin: () => {
+                        mainContent.style.paddingTop = '0';
+                    },
+                    // When at the top of the page
+                    onTop: () => {
+                        mainContent.style.paddingTop = navbar.offsetHeight + 'px';
+                    }
+                });
+                headroom.init();
+
+                // Set initial padding. Use a timeout to ensure correct height is measured after render.
+                setTimeout(() => {
+                    mainContent.style.paddingTop = navbar.offsetHeight + 'px';
+                }, 100);
+
+                // Recalculate on resize
+                window.addEventListener('resize', () => {
+                    if (!navbar.classList.contains('headroom--unpinned')) {
+                        mainContent.style.paddingTop = navbar.offsetHeight + 'px';
+                    }
+                });
+            }
+
             // 添加平滑滚动效果
             document.querySelectorAll('.list-group-item[href^="#"]').forEach(link => {
                 link.addEventListener('click', function (e) {
@@ -179,6 +228,43 @@
                     }
                 });
             });
+
+            const sidebar = document.getElementById('sidebar');
+            if (sidebar) {
+                const sidebarCard = sidebar.querySelector('.card');
+                const sidebarInitialTop = sidebar.offsetTop;
+
+                function setSidebarSticky() {
+                    if (window.innerWidth < 768) { // Bootstrap md breakpoint
+                        sidebarCard.style.position = 'static';
+                        sidebarCard.style.width = 'auto';
+                        return;
+                    }
+
+                    if (window.scrollY > sidebarInitialTop - 16) {
+                        // Only set the width if the element is not already fixed.
+                        // This captures the correct width just before it's taken out of flow.
+                        if (sidebarCard.style.position !== 'fixed') {
+                            sidebarCard.style.width = sidebarCard.offsetWidth + 'px';
+                        }
+                        sidebarCard.style.position = 'fixed';
+                        sidebarCard.style.top = '1rem';
+                    } else {
+                        sidebarCard.style.position = 'static';
+                        sidebarCard.style.width = 'auto';
+                    }
+                }
+
+                window.addEventListener('scroll', setSidebarSticky);
+                
+                window.addEventListener('resize', () => {
+                    // On resize, temporarily reset the style to allow for correct width recalculation.
+                    sidebarCard.style.position = 'static';
+                    sidebarCard.style.width = 'auto';
+                    // Then, re-apply the sticky logic.
+                    setSidebarSticky();
+                });
+            }
         });
     </script>
 </body>
