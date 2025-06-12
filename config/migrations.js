@@ -20,6 +20,15 @@ const getMigrations = function() {
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`,
 
+        // Add is_deletable column to groups table
+        `ALTER TABLE groups ADD COLUMN is_deletable INTEGER DEFAULT 1`,
+
+        // Add unique index to group name
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_groups_name ON groups (name)`,
+
+        // Insert default "Recommended" group
+        `INSERT OR IGNORE INTO groups (name, description, sort_order, is_deletable) VALUES ('推荐', '编辑推荐的优质工具', -1, 0)`,
+
         // Tools table
         `CREATE TABLE IF NOT EXISTS tools (
             id INTEGER PRIMARY KEY,
@@ -42,7 +51,7 @@ const getMigrations = function() {
         `PRAGMA table_info(tools)`,
         `ALTER TABLE tools ADD COLUMN api_method VARCHAR(50) DEFAULT 'GET'`,
         `ALTER TABLE tools ADD COLUMN api_params TEXT`,
-        `ALTER TABLE tools ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`
+        `ALTER TABLE tools ADD COLUMN updated_at TIMESTAMP DEFAULT NULL`
     ];
 };
 

@@ -283,14 +283,21 @@ app.get('/tool/:uuid', async (req, res) => {
 
         // 获取同分类的相似工具（不包括当前工具）
         const similarToolsQuery = `
-            SELECT t.*, g.name as group_name 
-            FROM tools t 
-            LEFT JOIN groups g ON t.group_id = g.id 
-            WHERE t.group_id = ? AND t.uuid != ? 
-            ORDER BY t.sort_order ASC, t.id ASC 
+            SELECT * 
+            FROM tools 
+            WHERE group_id = ? AND uuid != ? 
+            ORDER BY sort_order ASC, id ASC 
             LIMIT 4`;
-
         const similarTools = await db.query(similarToolsQuery, [tool.group_id, tool.uuid]);
+
+        // 获取“猜你喜欢”的随机工具（不包括当前工具）
+        const randomToolsQuery = `
+            SELECT * 
+            FROM tools 
+            WHERE uuid != ? 
+            ORDER BY RANDOM() 
+            LIMIT 4`;
+        const randomTools = await db.query(randomToolsQuery, [tool.uuid]);
 
         // 获取站点设置
         const settingsRows = await db.query('SELECT key_name, value FROM settings WHERE key_name LIKE \'site_%\'');
@@ -304,6 +311,7 @@ app.get('/tool/:uuid', async (req, res) => {
         res.render('tool', {
             tool,
             similarTools,
+            randomTools,
             settings: {
                 site_name: settings.site_name || 'XTools - 在线工具箱',
                 site_keywords: settings.site_keywords || '',
