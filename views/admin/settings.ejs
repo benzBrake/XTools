@@ -85,26 +85,29 @@
         </div>
     </div>
 
-    <div class="card mt-4">
-        <div class="card-header">
-            数据导入导出
-        </div>
-        <div class="card-body">
-            <div class="row">
-                <div class="col-md-6">
-                    <h5>导出数据</h5>
-                    <p class="text-muted">导出所有分类和工具配置</p>
-                    <a href="/admin/settings/export" class="btn btn-primary">导出配置</a>
-                </div>
-                <div class="col-md-6">
-                    <h5>导入数据</h5>
-                    <p class="text-muted">导入分类和工具配置（将覆盖现有配置）</p>
-                    <form action="/admin/settings/import" method="POST" enctype="multipart/form-data">
-                        <div class="mb-3">
-                            <input type="file" class="form-control" id="importFile" name="importFile" accept=".json" required>
-                        </div>
-                        <button type="submit" class="btn btn-warning" onclick="return confirm('导入将覆盖现有配置，确定继续吗？')">导入配置</button>
-                    </form>
+    <div class="container mt-4">
+        <div class="card">
+            <div class="card-header">
+                数据导入导出
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>导出数据</h5>
+                        <p class="text-muted">导出所有分类和工具配置</p>
+                        <a href="/admin/settings/export" class="btn btn-primary">导出配置</a>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>导入数据</h5>
+                        <p class="text-muted">导入分类和工具配置（将覆盖现有配置）</p>
+                        <form action="/admin/settings/import" method="POST" enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <input type="file" class="form-control" id="importFile" name="importFile" accept=".json" required>
+                                <div class="form-text">请选择之前导出的JSON配置文件</div>
+                            </div>
+                            <button type="submit" class="btn btn-warning">导入配置</button>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>

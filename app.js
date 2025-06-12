@@ -10,7 +10,7 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 
 // Configure multer for handling file uploads
-const upload = multer({ 
+const upload = multer({
     dest: 'uploads/',
     fileFilter: (req, file, cb) => {
         if (file.mimetype === 'application/json') {
@@ -30,13 +30,13 @@ const port = 3000;
 // 导入数据库配置
 const db = require('./config/database');
 
-// Database setup
-db.connect().then(() => {
-    console.log('Database connection initialized.');
-}).catch(err => {
-    console.error('Error connecting to the database:', err);
-    process.exit(1);
-});
+// 初始化数据库连接
+if (process.env.NODE_ENV !== 'test') {
+    db.connect().catch(err => {
+        console.error('Error connecting to the database:', err);
+        process.exit(1);
+    });
+}
 
 // Database initialization is now handled by migrations
 
@@ -48,30 +48,6 @@ const defaultSettings = [
     { key_name: 'site_keywords', value: '在线工具,工具箱,开发者工具' },
     { key_name: 'site_description', value: 'XTools 是一个开发者在线工具箱，提供了多种实用的开发工具。' }
 ];
-
-// Initialize settings
-db.connect().then(async () => {
-    try {
-        // 重建 settings 表
-        await db.query('DROP TABLE IF EXISTS settings');
-        await db.query(`CREATE TABLE settings (
-            id INTEGER PRIMARY KEY,
-            key_name VARCHAR(255) UNIQUE,
-            value TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )`);
-        
-        // 插入默认设置
-        for (const setting of defaultSettings) {
-            await db.query('INSERT INTO settings (key_name, value) VALUES (?, ?)', 
-                [setting.key_name, setting.value]);
-            console.log(`Default setting created: ${setting.key_name}`);
-        }
-    } catch (err) {
-        console.error('Error initializing settings:', err);
-    }
-});
 
 // Middleware
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -109,13 +85,13 @@ app.get('/admin/login', (req, res) => {
 });
 
 app.post('/admin/login', async (req, res) => {
-    const { username, password } = req.body;
+    const { password } = req.body;
 
     // Get admin password from settings
     try {
         const row = await db.query('SELECT value FROM settings WHERE key_name = ?', ['admin_password']);
-        if (!row || (Array.isArray(row) && row.length === 0) || !bcrypt.compareSync(password, row[0].value) || username !== 'admin') {
-            return res.redirect('/admin/login?error=' + encodeURIComponent('用户名或密码错误'));
+        if (!row || (Array.isArray(row) && row.length === 0) || !bcrypt.compareSync(password, row[0].value)) {
+            return res.status(200).render('admin/login', { error: 'Invalid credentials' });
         }
 
         req.session.isAuthenticated = true;
@@ -124,7 +100,7 @@ app.post('/admin/login', async (req, res) => {
         res.redirect(returnTo);
     } catch (err) {
         console.error('Login error:', err);
-        return res.redirect('/admin/login?error=' + encodeURIComponent('登录失败'));
+        return res.status(200).render('admin/login', { error: 'Login failed' });
     }
 });
 
@@ -185,8 +161,8 @@ app.get('/search', async (req, res) => {
             tool.highlightedDescription = tool.description.replace(regex, match => `<span class="highlight">${match}</span>`);
         });
 
-        res.render('search', { 
-            tools, 
+        res.render('search', {
+            tools,
             query,
             settings: {
                 site_name: settings.site_name || 'XTools - 在线工具箱',
@@ -198,6 +174,60 @@ app.get('/search', async (req, res) => {
     } catch (err) {
         console.error('Search error:', err);
         return res.status(500).send('Database error');
+    }
+});
+
+// API routes
+app.get('/api/settings', async (req, res) => {
+    try {
+        const settingsRows = await db.query('SELECT key_name, value FROM settings WHERE key_name LIKE \'site_%\'');
+        res.json({
+            success: true,
+            settings: settingsRows
+        });
+    } catch (err) {
+        console.error('Settings API error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.post('/api/settings', requireAuth, async (req, res) => {
+    try {
+        const updates = Object.entries(req.body);
+        for (const [key, value] of updates) {
+            if (key.startsWith('site_')) {
+                await db.query('UPDATE settings SET value = ? WHERE key_name = ?', [value, key]);
+            }
+        }
+        res.json({ success: true });
+    } catch (err) {
+        console.error('Settings update error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+app.all('/api/*', async (req, res, next) => {
+    try {
+        // 查找匹配的工具
+        const tools = await db.query('SELECT * FROM tools WHERE api_endpoint = ? AND type = ?', [req.path, 'api']);
+        const tool = tools[0];
+
+        if (!tool) {
+            return next(); // 如果没有找到匹配的工具，继续下一个路由
+        }
+
+        // 返回成功响应
+        res.json({
+            success: true,
+            data: req.method === 'POST' ? req.body : {},
+            tool: {
+                name: tool.name,
+                description: tool.description
+            }
+        });
+    } catch (err) {
+        console.error('API error:', err);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
@@ -225,9 +255,9 @@ app.get('/', async (req, res) => {
             groupedTools[groupName].push(tool);
         });
 
-        res.render('index', { 
+        res.render('index', {
             groups,
-            groupedTools, 
+            groupedTools,
             settings: {
                 site_name: settings.site_name || 'XTools - 在线工具箱',
                 site_keywords: settings.site_keywords || '',
@@ -244,7 +274,7 @@ app.get('/', async (req, res) => {
 app.get('/tool/:uuid', async (req, res) => {
     try {
         // 获取工具详情
-        const tools = await db.query('SELECT t.*, g.name as group_name FROM tools t LEFT JOIN groups g ON t.group_id = g.id WHERE t.uuid = ?', [req.params.uuid]);
+        const tools = await db.query('SELECT t.*, g.name as group_name, t.api_endpoint, t.api_method, t.api_params FROM tools t LEFT JOIN groups g ON t.group_id = g.id WHERE t.uuid = ?', [req.params.uuid]);
         const tool = tools[0];
 
         if (!tool) {
@@ -271,7 +301,7 @@ app.get('/tool/:uuid', async (req, res) => {
             settings[row.key_name] = row.value;
         });
 
-        res.render('tool', { 
+        res.render('tool', {
             tool,
             similarTools,
             settings: {
@@ -296,13 +326,13 @@ app.post('/admin/login', async (req, res) => {
     const { username, password } = req.body;
     try {
         const usernameRow = await db.query('SELECT value FROM settings WHERE key_name = ?', ['admin_username']);
-        
+
         if (!usernameRow || usernameRow.length === 0 || usernameRow[0].value !== username) {
             return res.render('admin/login', { error: 'Invalid credentials' });
         }
 
         const passwordRow = await db.query('SELECT value FROM settings WHERE key_name = ?', ['admin_password']);
-        
+
         if (!passwordRow || passwordRow.length === 0 || !bcrypt.compareSync(password, passwordRow[0].value)) {
             return res.render('admin/login', { error: 'Invalid credentials' });
         }
@@ -468,7 +498,7 @@ app.post('/admin/settings/password', requireAuth, async (req, res) => {
     try {
         // 验证当前密码
         const rows = await db.query('SELECT value FROM settings WHERE key_name = ?', ['admin_password']);
-        
+
         if (!rows || rows.length === 0 || !bcrypt.compareSync(currentPassword, rows[0].value)) {
             return res.render('admin/settings', { error: '当前密码错误' });
         }
@@ -476,7 +506,7 @@ app.post('/admin/settings/password', requireAuth, async (req, res) => {
         // 更新密码
         const hashedPassword = bcrypt.hashSync(newPassword, 10);
         await db.query('UPDATE settings SET value = ? WHERE key_name = ?', [hashedPassword, 'admin_password']);
-        
+
         res.render('admin/settings', { success: '密码已更新' });
     } catch (err) {
         console.error('Password update error:', err);
@@ -488,7 +518,7 @@ app.post('/admin/settings/password', requireAuth, async (req, res) => {
 // Update group order
 app.post('/admin/group/reorder', requireAuth, async (req, res) => {
     const { groupId, newOrder } = req.body;
-    
+
     if (!groupId || newOrder === undefined) {
         return res.status(400).json({ error: '缺少必要参数' });
     }
@@ -504,7 +534,7 @@ app.post('/admin/group/reorder', requireAuth, async (req, res) => {
 
 app.post('/admin/tool/reorder', requireAuth, async (req, res) => {
     const { toolId, newOrder } = req.body;
-    
+
     if (!toolId || newOrder === undefined) {
         return res.status(400).json({ error: '缺少必要参数' });
     }
@@ -533,9 +563,9 @@ app.get('/admin/tool/new', requireAuth, async (req, res) => {
     try {
         const groups = await db.query('SELECT * FROM groups ORDER BY name');
         const rows = await db.query('SELECT value FROM settings WHERE key_name = ?', ['cdn_url']);
-        
-        res.render('admin/tool-form', { 
-            tool: {}, 
+
+        res.render('admin/tool-form', {
+            tool: {},
             groups,
             settings: {
                 cdn_url: rows.length > 0 ? rows[0].value : ''
@@ -550,7 +580,7 @@ app.get('/admin/tool/new', requireAuth, async (req, res) => {
 app.post('/admin/tool', requireAuth, async (req, res) => {
     const { name, description, html_content, api_endpoint, group_id, type } = req.body;
     const uuid = uuidv4();
-    
+
     try {
         await db.query(`INSERT INTO tools (uuid, name, description, html_content, api_endpoint, group_id, type) 
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -581,9 +611,9 @@ app.get('/admin/tool/:id/edit', requireAuth, async (req, res) => {
 
         const groups = await db.query('SELECT * FROM groups ORDER BY name');
         const cdnRows = await db.query('SELECT value FROM settings WHERE key_name = ?', ['cdn_url']);
-        
-        res.render('admin/tool-form', { 
-            tool, 
+
+        res.render('admin/tool-form', {
+            tool,
             groups,
             settings: {
                 cdn_url: cdnRows.length > 0 ? cdnRows[0].value : '',
@@ -600,7 +630,7 @@ app.get('/admin/tool/:id/edit', requireAuth, async (req, res) => {
 
 app.post('/admin/tool/:id', requireAuth, async (req, res) => {
     const { name, description, html_content, api_endpoint, group_id, type } = req.body;
-    
+
     try {
         await db.query(`UPDATE tools SET name = ?, description = ?, html_content = ?, 
             api_endpoint = ?, group_id = ?, type = ? WHERE id = ?`,
@@ -636,7 +666,7 @@ app.get('/admin/groups', requireAuth, async (req, res) => {
 
 app.post('/admin/group', requireAuth, async (req, res) => {
     const { name, description, display_style } = req.body;
-    
+
     try {
         await db.query('INSERT INTO groups (name, description, display_style) VALUES (?, ?, ?)',
             [name, description, display_style]
@@ -650,7 +680,7 @@ app.post('/admin/group', requireAuth, async (req, res) => {
 
 app.post('/admin/group/:id', requireAuth, async (req, res) => {
     const { name, description, display_style } = req.body;
-    
+
     try {
         await db.query('UPDATE groups SET name = ?, description = ?, display_style = ? WHERE id = ?',
             [name, description, display_style, req.params.id]
@@ -666,7 +696,7 @@ app.delete('/admin/group/:id', requireAuth, async (req, res) => {
     try {
         // 先检查是否有工具在使用该分组
         const rows = await db.query('SELECT COUNT(*) as count FROM tools WHERE group_id = ?', [req.params.id]);
-        
+
         if (rows[0].count > 0) {
             return res.status(400).json({ error: '该分组下还有工具，无法删除' });
         }
@@ -680,6 +710,11 @@ app.delete('/admin/group/:id', requireAuth, async (req, res) => {
     }
 });
 
-app.listen(port, () => {
-    console.log(`Server is running on http://localhost:${port}`);
-});
+if (process.env.NODE_ENV !== 'test') {
+    const port = process.env.PORT || 3000;
+    app.listen(port, () => {
+        console.log(`Server is running on port ${port}`);
+    });
+}
+
+module.exports = app;

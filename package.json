@@ -22,5 +22,8 @@
   },
   "devDependencies": {
     "nodemon": "^2.0.22"
+  },
+  "volta": {
+    "node": "22.16.0"
   }
 }
