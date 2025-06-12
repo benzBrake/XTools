@@ -38,13 +38,34 @@
         
         <div class="card">
             <div class="card-body">
-                <% if (tool.type === 'link') { %>
-                    <div class="text-center">
-                        <p class="lead mb-4">点击下方按钮直接访问链接</p>
-                        <a href="<%= tool.html_content %>" target="_blank" class="btn btn-primary btn-lg">
-                            <i class="bi bi-box-arrow-up-right me-2"></i>访问链接
-                        </a>
-                    </div>
+                <div class="text-center">
+                <% if (tool.type === 'link') { 
+                    let links;
+                    try {
+                        links = JSON.parse(tool.html_content);
+                    } catch (e) {
+                        links = null;
+                    }
+                %>
+                <p class="lead mb-4">点击下方按钮直接访问链接</p>
+                    <% if (Array.isArray(links) && links.every(l => l.title && l.url)) { %>
+                        <% links.forEach(function(link) { %>
+                                <a href="<%= link.url %>" target="_blank" class="btn btn-primary btn-lg">
+                                    <i class="bi bi-box-arrow-up-right me-2"></i><%= link.title %>
+                                </a>
+                        <% }); %>
+                    <% } else if (Array.isArray(links) && links.every(l => l.url)) { %>
+                        <% if (links.length === 1) { %>
+                            <a href="<%= links[0].url %>" target="_blank" class="btn btn-primary btn-lg">
+                                <i class="bi bi-box-arrow-up-right me-2"></i>访问链接
+                            </a>
+                        <% } %>
+                    <% } else { %>
+                            <a href="<%= tool.html_content %>" target="_blank" class="btn btn-primary btn-lg">
+                                <i class="bi bi-box-arrow-up-right me-2"></i>访问链接
+                            </a>
+                    <% } %>
+                </div>
                 <% } else if (tool.type === 'api') { %>
                     <div class="api-endpoint-info">
                         <h4>API 端点</h4>
