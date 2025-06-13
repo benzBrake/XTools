@@ -1,6 +1,6 @@
-# XTools - 高度可定制的在线工具箱
+# XTools - 高度可定制的在线导航工具箱
 
-一个功能强大、高度可定制的在线工具箱网站，支持在线添加和管理自定义工具，并可轻松部署在不同环境中。
+一个功能强大、高度可定制的在线导航工具箱网站，支持在线添加和管理自定义工具，并可轻松部署在不同环境中。
 
 ## ✨ 功能亮点
 
@@ -117,20 +117,21 @@ DB_NAME=xtools
 
 ```
 XTools/
-├── app.js              # 应用主文件，包含所有路由和核心逻辑
-├── config/             # 配置文件
-│   ├── database.js     # 数据库连接和查询逻辑
-│   └── migrations.js   # 数据库表结构定义
-├── data/               # SQLite 数据库文件存放目录
-├── node_modules/       # Node.js 依赖
-├── public/             # 静态资源 (CSS, JS, images)
-├── scripts/            # 数据库迁移、数据导入导出等脚本
-├── utils/              # 辅助函数
-├── views/              # EJS 视图模板
-├── .env                # 环境变量配置文件 (需从 .env.example 复制)
-├── .env.example        # 环境变量示例文件
-├── package.json        # 项目依赖和脚本配置
-└── README.md           # 就是你现在看到的文件
+├── app.js                        # 应用主文件，包含所有路由和核心逻辑
+├── config/                       # 配置文件
+│   ├── database.js               # 数据库连接和查询逻辑
+│   └── migrations.js             # 数据库表结构定义
+├── data/                         # SQLite 数据库文件存放目录
+├── node_modules/                 # Node.js 依赖
+├── public/                       # 静态资源 (CSS, JS, images)
+├── scripts/                      # 数据库迁移、数据导入导出等脚本
+├── utils/                        # 辅助函数
+├── views/                        # EJS 视图模板
+├── .env                          # 环境变量配置文件 (需从 .env.example 复制)
+├── .env.example                  # 环境变量示例文件
+├── package.json                  # 项目依赖和脚本配置
+├── xtools-config-2025-06-12.json # 演示数据文件
+└── README.md                     # 就是你现在看到的文件
 ```
 
 ## 🗄️ 数据库初始化
@@ -144,4 +145,14 @@ node scripts/migrate.js
 ```
 
 该脚本会自动读取配置，连接到相应数据库并创建所有必需的数据表。
+
+### 导入演示数据（可选）
+
+为了快速体验，你可以导入项目附带的演示数据文件 `xtools-config-2025-06-12.json`。
+
+1.  启动应用并登录到管理后台 (`/admin`)。
+2.  导航到“数据管理”页面。
+3.  在“导入数据”部分，选择 `xtools-config-2025-06-12.json` 文件并上传。
+
+这将为你预先填充一些工具和分类，方便你快速了解系统功能。
 
