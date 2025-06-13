@@ -84,25 +84,7 @@ app.get('/admin/login', (req, res) => {
     res.render('admin/login', { error: req.query.error });
 });
 
-app.post('/admin/login', async (req, res) => {
-    const { password } = req.body;
 
-    // Get admin password from settings
-    try {
-        const row = await db.query('SELECT value FROM settings WHERE key_name = ?', ['admin_password']);
-        if (!row || (Array.isArray(row) && row.length === 0) || !bcrypt.compareSync(password, row[0].value)) {
-            return res.status(200).render('admin/login', { error: 'Invalid credentials' });
-        }
-
-        req.session.isAuthenticated = true;
-        const returnTo = req.session.returnTo || '/admin/dashboard';
-        delete req.session.returnTo;
-        res.redirect(returnTo);
-    } catch (err) {
-        console.error('Login error:', err);
-        return res.status(200).render('admin/login', { error: 'Login failed' });
-    }
-});
 
 app.get('/admin/logout', (req, res) => {
     req.session.destroy(() => {
@@ -291,11 +273,12 @@ app.get('/tool/:uuid', async (req, res) => {
         const similarTools = await db.query(similarToolsQuery, [tool.group_id, tool.uuid]);
 
         // 获取“猜你喜欢”的随机工具（不包括当前工具）
+        const randomOrderClause = db.getDbType() === 'mysql' ? 'RAND()' : 'RANDOM()';
         const randomToolsQuery = `
             SELECT * 
             FROM tools 
             WHERE uuid != ? 
-            ORDER BY RANDOM() 
+            ORDER BY ${randomOrderClause} 
             LIMIT 4`;
         const randomTools = await db.query(randomToolsQuery, [tool.uuid]);
 
@@ -383,7 +366,7 @@ app.post('/admin/settings/site', requireAuth, async (req, res) => {
 
     try {
         // 使用事务更新所有设置
-        await db.query('BEGIN TRANSACTION');
+        await db.query('START TRANSACTION');
 
         for (const setting of settings) {
             await db.query(
@@ -452,7 +435,7 @@ app.post('/admin/settings/import', requireAuth, upload.single('importFile'), asy
         }
 
         // Begin transaction
-        await db.query('BEGIN TRANSACTION');
+        await db.query('START TRANSACTION');
 
         try {
             // Clear existing data
@@ -548,7 +531,7 @@ app.post('/admin/tool/reorder', requireAuth, async (req, res) => {
     }
 
     try {
-        await db.query('BEGIN TRANSACTION');
+        await db.query('START TRANSACTION');
         for (let i = 0; i < toolOrder.length; i++) {
             const toolId = toolOrder[i];
             const newOrder = i;

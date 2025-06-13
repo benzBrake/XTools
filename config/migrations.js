@@ -1,63 +1,85 @@
-const getMigrations = function() {
-    return [
-        // Settings table
+const getMigrations = (dbType = 'sqlite') => {
+    const sqliteMigrations = [
         `CREATE TABLE IF NOT EXISTS settings (
-            id INTEGER PRIMARY KEY,
-            key_name VARCHAR(255) UNIQUE,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key_name TEXT UNIQUE NOT NULL,
             value TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`,
-
-        // Groups table
         `CREATE TABLE IF NOT EXISTS groups (
-            id INTEGER PRIMARY KEY,
-            name VARCHAR(255) NOT NULL,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
             description TEXT,
-            display_style VARCHAR(50) DEFAULT 'card',
-            sort_order INT DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            sort_order INTEGER DEFAULT 0,
+            is_deletable INTEGER DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`,
-
-        // Add is_deletable column to groups table
-        `ALTER TABLE groups ADD COLUMN is_deletable INTEGER DEFAULT 1`,
-
-        // Add unique index to group name
-        `CREATE UNIQUE INDEX IF NOT EXISTS idx_groups_name ON groups (name)`,
-
-        // Insert default "Recommended" group
-        `INSERT OR IGNORE INTO groups (name, description, sort_order, is_deletable) VALUES ('推荐', '编辑推荐的优质工具', -1, 0)`,
-
-        // Tools table
         `CREATE TABLE IF NOT EXISTS tools (
-            id INTEGER PRIMARY KEY,
-            uuid VARCHAR(36) UNIQUE,
-            name VARCHAR(255),
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            uuid VARCHAR(191) UNIQUE NOT NULL,
+            name TEXT NOT NULL,
             description TEXT,
             html_content TEXT,
-            api_endpoint VARCHAR(255),
-            api_method VARCHAR(50) DEFAULT 'GET',
+            api_endpoint TEXT,
+            api_method TEXT DEFAULT 'GET',
             api_params TEXT,
+            group_id INTEGER,
+            type TEXT DEFAULT 'html',
+            sort_order INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(group_id) REFERENCES groups(id) ON DELETE SET NULL
+        )`,
+        `INSERT OR IGNORE INTO groups (id, name, description, sort_order, is_deletable) VALUES (1, '未分类', '未分类的工具', 9999, 0)`
+    ];
+
+    const mysqlMigrations = [
+        `CREATE TABLE IF NOT EXISTS settings (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            key_name VARCHAR(191) UNIQUE NOT NULL,
+            value TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS groups (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            name VARCHAR(191) UNIQUE NOT NULL,
+            description TEXT,
+            sort_order INT DEFAULT 0,
+            is_deletable BOOLEAN DEFAULT TRUE,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        )`,
+        `CREATE TABLE IF NOT EXISTS tools (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            uuid VARCHAR(36) UNIQUE NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            description TEXT,
+            html_content MEDIUMTEXT,
+            api_endpoint VARCHAR(255),
+            api_method VARCHAR(10) DEFAULT 'GET',
+            api_params JSON,
             group_id INT,
             type VARCHAR(50) DEFAULT 'html',
             sort_order INT DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY(group_id) REFERENCES groups(id)
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY(group_id) REFERENCES groups(id) ON DELETE SET NULL
         )`,
-        
-        // Add missing columns if they don't exist
-        `PRAGMA table_info(tools)`,
-        `ALTER TABLE tools ADD COLUMN api_method VARCHAR(50) DEFAULT 'GET'`,
-        `ALTER TABLE tools ADD COLUMN api_params TEXT`,
-        `ALTER TABLE tools ADD COLUMN updated_at TIMESTAMP DEFAULT NULL`
+        `INSERT IGNORE INTO groups (id, name, description, sort_order, is_deletable) VALUES (1, '未分类', '未分类的工具', 9999, 0)`
     ];
+
+    if (dbType === 'mysql') {
+        return mysqlMigrations;
+    }
+    return sqliteMigrations;
 };
 
 const getDefaultAdmin = () => ({
     username: 'admin',
-    password: '$2a$10$RJ7hQBP8D9E4XLqEwZYCxuNXcXxZUdIvLhPPmvIUxhxVwQ4q4OOPe' // admin123
+    password: 'admin123'
 });
 
 module.exports = {
