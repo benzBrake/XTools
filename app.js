@@ -365,17 +365,12 @@ app.post('/admin/settings/site', requireAuth, async (req, res) => {
     ];
 
     try {
-        // 使用事务更新所有设置
-        await db.query('START TRANSACTION');
-
         for (const setting of settings) {
             await db.query(
-                'UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key_name = ?',
-                [setting.value, setting.key_name]
+                'INSERT INTO settings (key_name, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)',
+                [setting.key_name, setting.value]
             );
         }
-
-        await db.query('COMMIT');
 
         res.render('admin/settings', {
             success: '站点设置已更新',
@@ -387,7 +382,6 @@ app.post('/admin/settings/site', requireAuth, async (req, res) => {
             }
         });
     } catch (err) {
-        await db.query('ROLLBACK');
         console.error('Settings update error:', err);
         res.status(500).send('Database error');
     }
